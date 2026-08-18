@@ -52,9 +52,9 @@ From `config.php`:
 | Setting | Value |
 |---|---|
 | DB_HOST | `localhost` |
-| DB_NAME | `quraneat_post` |
-| DB_USER | `quraneat_post` |
-| DB_PASS | `.XIDBYCXE~+KrfX]` |
+| DB_NAME | `db_name` |
+| DB_USER | `db_user_name` |
+| DB_PASS | `db_password` |
 
 These are cPanel MySQL credentials. Do not commit real secrets anywhere else.
 
