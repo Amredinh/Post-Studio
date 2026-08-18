@@ -35,12 +35,12 @@ Tech constraints decided with the client:
 
 ## 2. Environment
 
-- Working directory: `C:\Users\user\Desktop\main projects\poster`
+- Working directory: `<project-root>` (the folder containing this repo)
 - Target host: **cPanel** (shared hosting), database via phpMyAdmin/MariaDB.
 - Local tooling used during development (NOT part of the project):
-  - Portable PHP: `C:\Users\user\AppData\Local\Temp\opencode\php\bin\php.exe`
+  - Portable PHP: `<temp>\opencode\php\bin\php.exe`
     (php.ini already enables curl, pdo_mysql, mbstring).
-  - Mock API servers + test scripts: `C:\Users\user\AppData\Local\Temp\opencode\mock\`
+  - Mock API servers + test scripts: `<temp>\opencode\mock\`
     (Zernio mock `router.php`, BP mock `bp_router.php`, client/composer tests).
 
 ---
@@ -52,9 +52,9 @@ From `config.php`:
 | Setting | Value |
 |---|---|
 | DB_HOST | `localhost` |
-| DB_NAME | `db_name` |
-| DB_USER | `db_user_name` |
-| DB_PASS | `db_password` |
+| DB_NAME | `your_database_name` |
+| DB_USER | `your_database_user` |
+| DB_PASS | `your_database_password` |
 
 These are cPanel MySQL credentials. Do not commit real secrets anywhere else.
 
@@ -379,13 +379,13 @@ channel list grouped by platform with ZN/BP badges and copy-ID checkboxes.
 
 ```php
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'quraneat_post');
-define('DB_USER', 'quraneat_post');
-define('DB_PASS', '.XIDBYCXE~+KrfX]');
+define('DB_NAME', 'your_database_name');
+define('DB_USER', 'your_database_user');
+define('DB_PASS', 'your_database_password');
 define('ZERNIO_BASE_URL', 'https://zernio.com/api/v1');
 define('BULKPUBLISH_BASE_URL', 'https://app.bulkpublish.com');
 define('APP_NAME', 'Post Studio');
-define('APP_SECRET', 'CHANGE_THIS_TO_A_LONG_RANDOM_STRING_1234567890abcdef'); // used for sessions
+define('APP_SECRET', 'CHANGE_THIS_TO_A_LONG_RANDOM_STRING'); // used for sessions
 define('SESSION_NAME', 'poststudio_session');
 define('APP_DEBUG', true); // set false in production
 ```
@@ -397,7 +397,7 @@ define('APP_DEBUG', true); // set false in production
 Everything below was verified during development:
 
 1. **PHP lint** — all 22 PHP files pass `php -l` with portable PHP 8.4
-   (`C:\Users\user\AppData\Local\Temp\opencode\php\bin\php.exe`). Code is written for
+   (`<temp>\opencode\php\bin\php.exe`). Code is written for
    PHP 7.4+ so it is safe on cPanel.
 2. **Zernio client** — 15/15 tests against a mock server (`mock/router.php`).
 3. **BulkPublish client** — 19/19 tests against a mock server (`mock/bp_router.php`):

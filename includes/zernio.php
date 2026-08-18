@@ -62,7 +62,6 @@ class Zernio {
         $raw = curl_exec($ch);
         $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curlErr = curl_error($ch);
-        curl_close($ch);
 
         if ($curlErr !== '') {
             throw new ZernioException('Connection error: ' . $curlErr);

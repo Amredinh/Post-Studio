@@ -6,9 +6,9 @@
 
 // ---- MySQL credentials (cPanel) ----
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'quraneat_post');
-define('DB_USER', 'quraneat_post');
-define('DB_PASS', '.XIDBYCXE~+KrfX]');
+define('DB_NAME', 'your_database_name');
+define('DB_USER', 'your_database_user');
+define('DB_PASS', 'your_database_password');
 
 // ---- Zernio API ----
 define('ZERNIO_BASE_URL', 'https://zernio.com/api/v1');
@@ -18,7 +18,7 @@ define('BULKPUBLISH_BASE_URL', 'https://app.bulkpublish.com');
 
 // ---- App settings ----
 define('APP_NAME', 'Post Studio');
-define('APP_SECRET', 'CHANGE_THIS_TO_A_LONG_RANDOM_STRING_1234567890abcdef');
+define('APP_SECRET', 'CHANGE_THIS_TO_A_LONG_RANDOM_STRING');
 define('SESSION_NAME', 'poststudio_session');
 
 // Show pretty errors while developing; set to false in production

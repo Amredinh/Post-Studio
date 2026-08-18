@@ -1,5 +1,5 @@
 -- Post Studio - database schema
--- Run this in phpMyAdmin (or import) on the quraneat_post database.
+-- Run this in phpMyAdmin (or import) on your database.
 
 CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
