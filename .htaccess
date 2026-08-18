@@ -1,0 +1,22 @@
+# Protect sensitive files from direct web access
+<Files "config.php">
+  Require all denied
+</Files>
+<Files "install.sql">
+  Require all denied
+</Files>
+
+# Block direct access to the includes directory
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule ^includes/ - [F,L]
+</IfModule>
+
+# Basic hardening
+Options -Indexes
+ServerSignature Off
+
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+</IfModule>
