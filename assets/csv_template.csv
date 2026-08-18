@@ -1,0 +1,7 @@
+service,platform,username,caption,media_url,media_type,scheduled_for,timezone,custom_content
+zernio,twitter,@acme,Check out our new feature!,https://example.com/photo.jpg,image,,UTC,
+zernio,instagram,mybrand,Launch day! 🚀,https://example.com/photo.jpg,image,2026-08-20 09:00,America/New_York,
+zernio,facebook,My Page,Same post different day,https://example.com/video.mp4,video,,UTC,
+zernio,linkedin,Acme Inc,Sharing our roadmap,,caption,2026-08-21 10:30,Europe/London,
+bulkpublish,x,My X Handle,Posted via BulkPublish,,caption,,UTC,
+bulkpublish,instagram,My Instagram Account,Check the feed!,https://example.com/photo.jpg,image,2026-08-22 08:00,UTC,
