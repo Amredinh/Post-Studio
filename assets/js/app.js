@@ -41,9 +41,13 @@
     }
     const res = await fetch(url, opts);
     let data = null;
-    try { data = await res.json(); } catch (e) { /* ignore */ }
+    const rawText = await res.text();
+    try { data = JSON.parse(rawText); } catch (e) { /* ignore text */ }
     if (!res.ok) {
-      throw new Error((data && data.error) || 'Request failed (HTTP ' + res.status + ')');
+      throw new Error((data && data.error) || (data && data.message) || 'Request failed (HTTP ' + res.status + ')');
+    }
+    if (!data) {
+      throw new Error('Invalid JSON response from server');
     }
     return data;
   }
@@ -620,9 +624,14 @@
             const id = p.service === 'bulkpublish' ? (p.post && p.post.id) : (p.post && p.post._id);
             return p.service + ': ' + id;
           }).join(', ');
-          toast('Posted successfully' + (names ? ' \u2014 ' + names : ''), 'success');
+          
+          if (data.errors && data.errors.length > 0) {
+            toast('Partial success. Errors: ' + data.errors.join(' | '), 'error');
+          } else {
+            toast('Posted successfully' + (names ? ' \u2014 ' + names : ''), 'success');
+            setTimeout(function () { window.location.href = 'posts.php'; }, 1500);
+          }
           if (btn) { btn.disabled = false; if (label) label.textContent = 'Submit post'; }
-          setTimeout(function () { window.location.href = 'posts.php'; }, 1500);
         } catch (err) {
           toast(err.message, 'error');
           if (btn) { btn.disabled = false; if (label) label.textContent = 'Submit post'; }

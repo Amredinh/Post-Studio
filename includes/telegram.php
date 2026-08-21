@@ -27,7 +27,7 @@ class Telegram {
     }
 
     /** Core request helper. Returns decoded JSON array. */
-    private function request(string $method, string $path, $body = null, array $query = []): array {
+    public function request(string $method, $body = null, array $query = []): array {
         $url = $this->baseUrl . '/' . $method; // method here is the API method name like 'sendMessage'
         // Note: Telegram API uses GET for some methods, POST for others.
         // We'll just POST body for methods that need it, GET for others.
@@ -44,7 +44,7 @@ class Telegram {
         ]);
 
         if ($body !== null) {
-            curl_setopt($ch, CURLOPT_POST true);
+            curl_setopt($ch, CURLOPT_POST, true);
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body, JSON_UNESCAPED_SLASHES));
             curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
         }
@@ -75,12 +75,12 @@ class Telegram {
 
     /** GET https://api.telegram.org/bot<token>/getUpdates */
     public function getUpdates(int $offset = 0, int $limit = 100, string $timeout = 0): array {
-        return $this->request('getUpdates', [], null, ['offset' => $offset, 'limit' => $limit, 'timeout' => $timeout]);
+        return $this->request('getUpdates', null, ['offset' => $offset, 'limit' => $limit, 'timeout' => $timeout]);
     }
 
     /** POST https://api.telegram.org/bot<token>/sendMessage */
     public function sendMessage(string $chatId, string $text, string $parseMode = 'Markdown', array $replyMarkup = []): array {
-        return $this->request('sendMessage', [], [
+        return $this->request('sendMessage', [
             'chat_id' => $chatId,
             'text' => $text,
             'parse_mode' => $parseMode,
@@ -90,7 +90,7 @@ class Telegram {
 
     /** POST https://api.telegram.org/bot<token>/sendPhoto */
     public function sendPhoto(string $chatId, string $photo, string $caption = '', string $parseMode = 'Markdown'): array {
-        return $this->request('sendPhoto', [], [
+        return $this->request('sendPhoto', [
             'chat_id' => $chatId,
             'photo' => $photo,
             'caption' => $caption,
@@ -100,7 +100,7 @@ class Telegram {
 
     /** POST https://api.telegram.org/bot<token>/sendDocument */
     public function sendDocument(string $chatId, string $document, string $caption = '', string $parseMode = 'Markdown'): array {
-        return $this->request('sendDocument', [], [
+        return $this->request('sendDocument', [
             'chat_id' => $chatId,
             'document' => $document,
             'caption' => $caption,
@@ -110,17 +110,17 @@ class Telegram {
 
     /** Get webhook info */
     public function getWebhookInfo(): array {
-        return $this->request('getWebhookInfo', []);
+        return $this->request('getWebhookInfo');
     }
 
     /** Set webhook */
     public function setWebhook(string $url): array {
-        return $this->request('setWebhook', [], ['url' => $url]);
+        return $this->request('setWebhook', ['url' => $url]);
     }
 
     /** Delete webhook */
     public function deleteWebhook(): array {
-        return $this->request('deleteWebhook', []);
+        return $this->request('deleteWebhook');
     }
 }
 

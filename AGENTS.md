@@ -126,6 +126,8 @@ poster/
 ├── composer.php               compose-post page (form skeleton; logic is in app.js)
 ├── bulk.php                   bulk CSV upload page
 ├── posts.php                  merged post list from both services (filters + pagination)
+├── analytics.php              reports and engagement metrics dashboard
+├── telegram.php               telegram bot management and configuration
 ├── post_view.php              post detail (normalizes both services into one $view shape)
 ├── settings.php               manage both API keys + connection tests
 ├── includes/
@@ -146,7 +148,9 @@ poster/
     ├── bp_upload.php          browser → this server → BulkPublish /api/media (multipart proxy)
     ├── create_post.php        dispatches post creation per service; mirrors to local posts table
     ├── action.php             retry / unpublish (Zernio), retry / publish-now (BulkPublish)
-    └── bulk_upload.php        parses CSV, routes each row by its `service` column
+    ├── bulk_upload.php        parses CSV, routes each row by its `service` column
+    ├── refresh_analytics.php  fetches live engagement metrics for analytics dashboard
+    └── telegram_bot.php       interactive Telegram webhook (handles commands and media)
 ```
 
 ---
@@ -428,13 +432,10 @@ Everything below was verified during development:
    DB password) was deleted, and `.gitignore` was added. Verified with a project-wide search
    that no real credentials remain in any tracked file.
 
-**New test coverage (post-fix):**
-- `ajax/create_post.php` — success message now properly displays per-service results;
-  errors are surfaced in the UI when one service succeeds and the other fails.
-- `ajax/refresh_posts.php` — new endpoint returns updated post data via AJAX;
-  tested with the dedicated "Refresh" button on posts.php.
-- `ajax/telegram_bot.php` — Telegram bot webhook receiver handles `/post`, `/status`,
-  and `/help` commands; bot token stored in `settings` table.
+**New Enhancements (post-fix):**
+- `ajax/create_post.php` — success message now properly displays per-service results; errors are surfaced in the UI safely for mixed submissions.
+- `analytics.php` + `ajax/refresh_analytics.php` — dedicated dashboard correctly pulls, aggregates, and renders reach and interaction metrics.
+- `telegram.php` + `ajax/telegram_bot.php` — Telegram bot webhook receiver rebuilt for fully stateless, interactive multi-media posting and instant status/analytics access.
 
 ---
 

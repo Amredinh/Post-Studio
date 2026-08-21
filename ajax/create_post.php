@@ -1,4 +1,4 @@
-<?php
+ob_start();
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/zernio.php';
 require_once __DIR__ . '/../includes/bulkpublish.php';
@@ -10,6 +10,7 @@ header('Content-Type: application/json');
 $raw = file_get_contents('php://input');
 $payload = json_decode($raw, true);
 if (!is_array($payload)) {
+    ob_end_clean();
     http_response_code(400);
     echo json_encode(['ok' => false, 'error' => 'Invalid JSON body']);
     exit;
@@ -106,11 +107,13 @@ if ($errors) {
 if (!$results) {
     $response['ok'] = false;
     $response['error'] = implode(' | ', $errors);
+    ob_end_clean();
     http_response_code(400);
     echo json_encode($response);
     exit;
 }
 
+ob_end_clean();
 echo json_encode($response);
 
 /**
