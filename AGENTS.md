@@ -10,17 +10,19 @@ into the code when you need details.
 ## 1. What this project is
 
 **Post Studio** is a lightweight, cPanel-hostable **PHP/MySQL** web app that lets a single
-admin create and schedule social-media posts through **two different posting services at
+admin create and schedule social-media posts through **three different posting services at
 the same time**:
 
 - **Zernio** (`https://zernio.com/api/v1`) — auth via `Bearer sk_...` API key.
 - **BulkPublish** (`https://app.bulkpublish.com`) — auth via `Bearer bp_...` API key.
+- **Buffer** (`https://api.bufferapp.com/1`, classic v1) — auth via `Bearer <access token>`.
 
-The key feature: the composer lists **all connected channels from both services**, the
-user ticks which platforms to post to, picks media/upload position, and the app creates
-posts on the correct service(s). Mixed selections (Zernio + BulkPublish channels in one
-composer run) create **one post per service** automatically because the two APIs are
-incompatible.
+The key feature: the composer lists **all connected channels from all services**, the user
+ticks which platforms to post to, picks media/upload position, and the app creates posts on
+the correct service(s). Mixed selections (e.g. Zernio + BulkPublish + Buffer channels in one
+composer run) create **one post per service** automatically because the APIs are
+incompatible. Buffer has no per-platform options or per-platform captions: one shared text
+goes to all its selected profiles.
 
 Tech constraints decided with the client:
 - **PHP 7.4+** compatibility (no PHP 8-only functions). Code uses plain cURL + PDO.
@@ -82,6 +84,7 @@ analytics cache JSON can exceed 64 KB). Important keys:
 |---|---|
 | `zernio_api_key` | Zernio API key (`sk_...`) |
 | `bulkpublish_api_key` | BulkPublish API key (`bp_...`) |
+| `buffer_api_key` | Buffer access token (classic API v1) |
 | `telegram_bot_token` | Telegram bot token (used by telegram.php / webhook) |
 | `analytics_cache` | JSON snapshot of the last successful analytics fetch (see Section 7.7) |
 
@@ -95,8 +98,8 @@ service's API).
 | Column | Type | Notes |
 |---|---|---|
 | id | INT AUTO_INCREMENT PK | |
-| zernio_post_id | VARCHAR(64) | Zernio post `_id` (24-hex) or BulkPublish post `id` (integer as string) |
-| service | VARCHAR(20) | `zernio` or `bulkpublish` |
+| zernio_post_id | VARCHAR(64) | Zernio post `_id` (24-hex), BulkPublish post `id` (integer as string) or Buffer update `id` with `bf` prefix |
+| service | VARCHAR(20) | `zernio`, `bulkpublish`, or `buffer` |
 | content | TEXT | caption |
 | media_type | VARCHAR(20) | `caption` / `image` / `video` |
 | media_json | TEXT | JSON of media items |
@@ -143,23 +146,25 @@ poster/
 ├── index.php                  dashboard: channel counts + connected channels grouped by platform
 ├── composer.php               compose-post page (form skeleton; logic is in app.js)
 ├── bulk.php                   bulk CSV upload page
-├── posts.php                  merged post list from both services (filters + pagination)
+├── posts.php                  merged post list from all three services (filters + pagination)
 ├── analytics.php              reports and engagement metrics dashboard
 ├── telegram.php               telegram bot management and configuration
-├── post_view.php              post detail (normalizes both services into one $view shape)
-├── settings.php               manage both API keys + connection tests
+├── tools.php                  static platform reference: per-service support matrix, free-tier limits, composer options, tips
+├── post_view.php              post detail (normalizes all services into one $view shape)
+├── settings.php               manage API keys (Zernio / BulkPublish / Buffer / Telegram) + connection tests
 ├── includes/
 │   ├── auth.php               sessions, CSRF, require_login / require_login_ajax, is_logged_in, user_count
 │   ├── db.php                 PDO helper: db(), get_setting(), set_setting(), increment_engagement(), get_engagement_views()
 │   ├── zernio.php             Zernio API client class + zernio_client() factory
 │   ├── bulkpublish.php        BulkPublish API client class + bulkpublish_client() + bp_map_platform()
+│   ├── buffer.php             Buffer (classic v1) API client class + buffer_client() + platform/status mappers
 │   ├── platforms.php          platform_meta(), platform_badge(), status_badge(), platform_list()
 │   ├── header.php             sidebar + topbar; nav; connection badges
 │   └── footer.php             closing tags + app.js include
 ├── assets/
 │   ├── css/style.css          hand-written dark theme layered over Tailwind
 │   ├── js/app.js              ALL front-end logic (composer, posts filters, post view actions, bulk)
-│   └── csv_template.csv       bulk-upload template (includes the `service` column)
+│   └── csv_template.csv       bulk-upload template (includes the `service` column: zernio|bulkpublish|buffer)
 └── ajax/
     ├── list_accounts.php      returns channels from BOTH services, tagged with service
     ├── presign.php            Zernio presign upload URL (browser → Zernio storage directly)
@@ -284,6 +289,46 @@ poster/
   `{ "error": { "message": "...", "code": "..." } }` or `{ "error": "string" }`. The client
   normalizes both. `BulkPublishException` carries `status` and `payload`.
 
+### 6.3 Buffer (`includes/buffer.php`)
+
+- Base URL: `https://api.bufferapp.com/1` (constant `BUFFER_BASE_URL`). **Classic API v1**
+  (`.json` endpoints) — not Buffer's newer v2.
+- Auth: `Authorization: Bearer <access token>`. Token from buffer.com → Settings (or the
+  developer portal).
+- **Requests are form-urlencoded** (`http_build_query`), not JSON — classic v1 requirement.
+  Array params use `profile_ids[0]=...&profile_ids[1]=...`.
+- Client class `Buffer` methods:
+  - `request(method, path, params)` → core helper, returns decoded JSON array
+  - `getUser()` → `GET /user.json`
+  - `listProfiles()` → `GET /profiles.json`
+  - `getProfile(id)` → `GET /profiles/{id}.json`
+  - `createUpdate(profileIds[], text, opts)` → `POST /updates/create.json`
+    (opts: `now`, `top`, `scheduledAt` ISO-UTC, `photoUrl`, `thumbnailUrl`)
+  - `listSent(profileId, count)` / `listPending(profileId, count)`
+    → `GET /profiles/{id}/updates/sent|pending.json` (max count 100)
+  - `getUpdate(id)` → `GET /updates/{id}.json`
+  - `sharePost(id)` → `POST /updates/{id}/share.json` with `when=now` (used as "retry")
+  - `destroyPost(id)` → `POST /updates/{id}/destroy.json` (used as "unpublish")
+- Factory: `buffer_client()` returns `null` when no token stored.
+- **IDs**: opaque strings. This app prefixes them with `bf` in UI/DB (`bf<updateId>`,
+  profile ids also `bf...`) and strips the prefix before API calls
+  (`preg_replace('/^bf/', '', $id)`).
+- **Profile shape**: `{ id, service ("twitter"|"facebook"|"instagram"|...|"google"),
+  service_username, formatted_username "@handle", display_name, avatar, timezone, ... }`.
+- **Platform mapping** `buffer_map_platform()`: Buffer's `google`/`gmb` → internal
+  `googlebusiness`; everything else passes through unchanged.
+- **Status mapping** `buffer_map_status()`: `sent`→`published`, `buffered`/`scheduled`→
+  `scheduled`, `failed`/`error`→`failed`, empty→`pending`.
+- **Timestamps are unix ints**, not ISO strings: `due_at`, `scheduled_at`, `sent_at`,
+  `created_at` all need `date('Y-m-d H:i:s', (int)$ts)` normalization.
+- **Media limitation**: only a single image via `media[photo]` URL on create; **video posts
+  are not supported** by this client and throw an exception.
+- **No per-platform anything**: one shared text/settings set per update across all selected
+  profiles. Per-platform options and custom content from the composer are ignored for
+  Buffer channels.
+- **Analytics fields**: `statistics.reach` (views), `statistics.favorites` (likes),
+  `statistics.mentions` (comments proxy).
+
 ---
 
 ## 7. How the pieces fit together (data flow)
@@ -293,9 +338,9 @@ Called by the composer with `GET`. Returns:
 ```json
 {
   "ok": true,
-  "accounts": [ ... ],       // unified list, both services
-  "services": { "zernio": true, "bulkpublish": true },
-  "errors": [ ... ]          // per-service error strings when one API fails but the other worked
+  "accounts": [ ... ],       // unified list, all three services
+  "services": { "zernio": true, "bulkpublish": true, "buffer": true },
+  "errors": [ ... ]          // per-service error strings when one API fails but others worked
 }
 ```
 Unified account shape:
@@ -303,11 +348,13 @@ Unified account shape:
 - BulkPublish channels: mapped to
   `{ service: "bulkpublish", _id: "b<id>", channelId: <int>, platform, displayName, username,
      avatarUrl, accountId, accountType, tokenStatus, isActive, color, short }`.
+- Buffer profiles: mapped to
+  `{ service: "buffer", _id: "bf<id>", profileId: "<buffer id>", platform, displayName,
+     username, avatarUrl, color, short }`.
 
 **ID collision rule:** Zernio `_id` is a hex string; BulkPublish `_id` is prefixed with `b`
-(`b1`, `b2`, ...). The composer keys selections on `_id`, so the two never collide.
-
-If both services have no key configured, the endpoint returns HTTP 400 with an error.
+(`b1`, `b2`, ...) and Buffer `_id` is prefixed with `bf`. The composer keys selections on
+`_id`, so the three never collide.
 
 ### 7.2 The composer (`composer.php` + `assets/js/app.js`)
 Order of sections on the page:
@@ -326,6 +373,8 @@ Order of sections on the page:
    customContent }` — where `platformSpecific` uses BP field names (`privacyStatus`,
    `privacyLevel`, `disableComment`, `thumbnailUrl`, etc.) and `_firstComment` is included
    so the server can hoist it.
+- Buffer: `{ service, platform, accountId: <buffer profile id>, customContent }` — no
+  `platformSpecific*` object is attached (Buffer ignores per-platform options).
 
 `composer.buildPayload()` assembles the unified payload (see 6.1 for the Zernio part) and
 also:
@@ -334,7 +383,8 @@ also:
   (BP TikTok options travel inside `platformSpecific.tiktok`).
 
 ### 7.3 Creating a post (`ajax/create_post.php`)
-1. Splits `payload.platforms` into `$zernioEntries` and `$bpEntries` by `service`.
+1. Splits `payload.platforms` into `$zernioEntries`, `$bpEntries` and `$bufferEntries`
+   by `service`.
 2. **Zernio**: strips `service` from entries and `fileId` from media items, then calls
    `Zernio::createPost($zPayload)`.
 3. **BulkPublish**: calls `build_bp_payload()` which:
@@ -345,37 +395,47 @@ also:
      URL via `uploadMediaFromUrl()` to obtain a file ID,
    - schedules: `publishNow` → create as `draft` then `publishPost()`;
      `scheduledFor` → converts to UTC ISO `scheduledAt` + `timezone`.
-4. `mirror_post()` inserts each created post into the local `posts` table (non-fatal if it
+4. **Buffer**: calls `create_buffer_update()` which collects the Buffer profile IDs from the
+   selected entries, requires a caption (text), rejects videos, attaches a single image via
+   `photoUrl` when present, and creates ONE update for all profiles — publish now or
+   scheduled via UTC ISO `scheduledAt`. Per-platform options/custom content are ignored.
+5. `mirror_post()` inserts each created post into the local `posts` table (non-fatal if it
    fails).
-5. Responds with `{ ok: true, posts: [ { service, post, message } ], errors: [] }`.
+6. Responds with `{ ok: true, posts: [ { service, post, message } ], errors: [] }`.
 
-**Mixed selections** → two HTTP calls, two posts, both mirrored. If one service fails, the
-other still succeeds and the error is reported.
+**Mixed selections** → up to three HTTP calls (one per involved service), each mirrored. If
+one service fails, the others still succeed and the error is reported.
 
 ### 7.4 Viewing posts (`posts.php` + `post_view.php`)
-- `posts.php` fetches both services (page 1, limit 100 each), normalizes into a common
-  shape (`_id`, `service`, `content`, `status`, `scheduledFor`, `mediaItems`, `platforms`,
-  `_sort`), merges, sorts newest-first, then paginates locally (20/page).
-- `post_view.php` takes `?id=...&service=zernio|bulkpublish`. It normalizes the raw API
-  response into a single `$view` array used by one template.
+- `posts.php` fetches all three services (Zernio + BP page 1/limit 100; Buffer pending +
+  sent queues per profile, 50 each), normalizes into a common shape (`_id`, `service`,
+  `content`, `status`, `scheduledFor`, `mediaItems`, `platforms`, `_sort`), merges, sorts
+  newest-first, then paginates locally (20/page).
+- `post_view.php` takes `?id=...&service=zernio|bulkpublish|buffer`. It normalizes the raw
+  API response into a single `$view` array used by one template.
 - Actions:
   - Zernio: **Retry** (failed) → `retryPost`, **Unpublish** (published/partial) → `unpublishPost`.
   - BulkPublish: **Retry** (failed) → `retryPost`, **Publish now** (draft) → `publishPost`.
-  - Both handled in `ajax/action.php` by reading the `service` field.
+  - Buffer: **Retry** → `sharePost` (re-shares now), **Remove from queue** (scheduled) →
+    `destroyPost`.
+  - All handled in `ajax/action.php` by reading the `service` field.
 
 ### 7.5 Bulk CSV (`bulk.php` + `ajax/bulk_upload.php`)
 CSV columns (in this order in the template):
 ```
 service,platform,username,caption,media_url,media_type,scheduled_for,timezone,custom_content
 ```
-- `service` = `zernio` (default) or `bulkpublish`.
+- `service` = `zernio` (default), `bulkpublish`, or `buffer`.
 - `platform`/`username` must match a connected account. Zernio matches on
   `platform|username` (username is case-insensitive); BulkPublish matches on
-  `platform|accountName` or `platform|accountId` (internal platform names, so use `twitter`
-  not `x`, `googlebusiness` not `gmb`).
+  `platform|accountName` or `platform|accountId`; Buffer matches on
+  `platform|formatted_username` (e.g. `twitter|@handle`) or `platform|service_username`
+  (internal platform names for BP: use `twitter` not `x`, `googlebusiness` not `gmb`).
 - `media_type` = `caption` (no media), `image`, `video`. `media_url` required for image/video.
+  Buffer rows reject video (API limitation) and require a caption.
 - `scheduled_for` = `YYYY-MM-DD HH:MM` in the given `timezone`; empty = publish now.
-- For BulkPublish rows, media URLs are uploaded via `uploadMediaFromUrl()` first.
+- For BulkPublish rows, media URLs are uploaded via `uploadMediaFromUrl()` first; Buffer rows
+  pass the URL straight through as `photoUrl`.
 - Dry-run mode validates without creating posts.
 
 ### 7.6 Dashboard (`index.php`)
@@ -442,13 +502,38 @@ Everything below was verified during development:
    - Media URL / fileId / schedule passthrough.
 5. **Auth redirects** — verified (login redirect, AJAX 401, CSRF).
 6. **PHP 8.5 deprecation fix** — `curl_close()` (no-op since PHP 8.0, deprecated in 8.5)
-   was removed from the request helpers in `includes/zernio.php` and `includes/bulkpublish.php`
-   after the live cPanel host (PHP 8.5) reported deprecation notices. Handles are freed at
-   request end; the removal is safe on PHP 7.4+ too.
+   was removed from every remaining call site: the request helpers in
+   `includes/zernio.php` / `includes/bulkpublish.php` (first pass), then
+   `includes/telegram.php`, the `uploadMediaFromUrl()` download helper in
+   `includes/bulkpublish.php`, and the presign PUT block in `ajax/telegram_bot.php`
+   (second pass, after the live cPanel host reported deprecation notices on the
+   Telegram settings page). Handles are freed at request end; the removal is safe on
+   PHP 7.4+ too. A project-wide search confirms zero `curl_close()` calls remain.
 7. **Secrets scrub (pre-GitHub)** — real DB credentials were removed from the repo before it
    was made public: `config.php` now holds placeholder values, `note.md` (which contained the
    DB password) was deleted, and `.gitignore` was added. Verified with a project-wide search
    that no real credentials remain in any tracked file.
+
+**Buffer integration + Tools page (latest round):**
+- `includes/buffer.php` — new classic-v1 Buffer client (`Buffer` class, `BufferException`,
+  `buffer_client()`, `buffer_map_platform()` google/gmb→googlebusiness, `buffer_map_status()`
+  sent/buffered/failed mapping). Form-urlencoded POSTs, `bf` ID prefix convention, unix-timestamp
+  normalization at every call site. Video posts rejected by design.
+- `settings.php` / `config.php` / `includes/header.php` — Buffer token card with connection
+  test (`getUser`), `BUFFER_BASE_URL` constant, sky-colored BF badge in the topbar.
+- `ajax/list_accounts.php`, `ajax/create_post.php`, `ajax/action.php`, `posts.php`,
+  `post_view.php`, `ajax/bulk_upload.php`, `ajax/refresh_analytics.php`, `index.php`,
+  `assets/js/app.js` — full three-service wiring: unified account list (`bf` prefix prevents
+  `_id` collisions), one-update-for-all-profiles Buffer dispatch in the composer (requires
+  caption, rejects video, ignores per-platform options), retry = share-now / remove-from-queue =
+  destroy on post view, merged posts list pulling pending+sent queues per profile (50 each),
+  analytics via `statistics.reach/favorites/mentions`, dashboard BF tile (5-column stat grid),
+  composer BF channel badges and buffer-aware `buildPlatformEntry`/tiktok condition,
+  CSV rows routed to Buffer via `buffer_row()` (video rejected, caption required).
+- `tools.php` — new static reference page: per-service capability matrix (ZN/BP/BF checkmarks)
+  and detail cards per platform covering post formats, free-plan limits (character caps, media
+  specs), composer options, and usage tips; plus a "how multi-service posting works" summary.
+- All 19 PHP files lint clean (portable PHP); app.js passes `node --check`.
 
 **New Enhancements (post-fix):**
 - `ajax/create_post.php` — success message now properly displays per-service results; errors are surfaced in the UI safely for mixed submissions.
@@ -539,9 +624,10 @@ code. Instead use one of:
 4. Set `APP_DEBUG` to `false` in `config.php`, and change `APP_SECRET` to a long random
    string.
 5. Visit the site → `login.php` → create the admin account on first run.
-6. Go to **Settings** → paste your Zernio (`sk_...`) and/or BulkPublish (`bp_...`) API keys →
-   verify the green "connected" badges.
-7. Open **Compose Post** — channels from both services should appear with ZN/BP badges.
+6. Go to **Settings** → paste your Zernio (`sk_...`), BulkPublish (`bp_...`) and/or Buffer
+   access-token API keys → verify the green "connected" badges.
+7. Open **Compose Post** — channels from all connected services should appear with
+   ZN/BP/BF badges.
 8. Optional: test bulk CSV on the **Bulk Publish** page with "Validate only" first.
 
 ---

@@ -181,7 +181,6 @@ class BulkPublish {
         curl_exec($ch);
         $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $contentType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
-        curl_close($ch);
         fclose($fp);
 
         if ($status < 200 || $status >= 300 || filesize($tmp) === 0) {

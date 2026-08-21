@@ -190,7 +190,9 @@
           const id = 'acc-' + a._id;
           const svc = a.service === 'bulkpublish'
             ? '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/25 ml-auto shrink-0" title="BulkPublish">BP</span>'
-            : '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/25 ml-auto shrink-0" title="Zernio">ZN</span>';
+            : (a.service === 'buffer'
+              ? '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/25 ml-auto shrink-0" title="Buffer">BF</span>'
+              : '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/25 ml-auto shrink-0" title="Zernio">ZN</span>');
           html += '<label for="' + esc(id) + '" class="account-card option-card px-3 py-2.5 flex items-center gap-2.5" data-platform="' + esc(a.platform) + '">'
             + '<input type="checkbox" id="' + esc(id) + '" class="account-check h-4 w-4 rounded border-slate-600 text-violet-500 focus:ring-violet-500 focus:ring-offset-0 bg-slate-800" data-account="' + esc(a._id) + '">'
             + '<span class="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-none" style="background:' + esc(a.color || '#64748b') + '">' + esc((a.short || a.platform.slice(0, 2)).toUpperCase()) + '</span>'
@@ -501,7 +503,7 @@
 
       const tiktok = this.platformValues['tiktok'];
       const zernioTikTok = platforms.some(function (p) {
-        return p.platform === 'tiktok' && p.service !== 'bulkpublish';
+        return p.platform === 'tiktok' && p.service === 'zernio';
       });
       if (zernioTikTok) {
         payload.tiktokSettings = {
@@ -521,9 +523,12 @@
       const p = acc.platform;
       const vals = this.platformValues[p] || {};
       const isBp = acc.service === 'bulkpublish';
+      const isBuf = acc.service === 'buffer';
       const entry = { service: acc.service, platform: p };
       if (isBp) {
         entry.channelId = acc.channelId;
+      } else if (isBuf) {
+        entry.accountId = acc.profileId;
       } else {
         entry.accountId = acc._id;
       }
@@ -571,7 +576,7 @@
         }
       }
       if (isBp && vals.firstComment) psd._firstComment = vals.firstComment;
-      if (Object.keys(psd).length) {
+      if (!isBuf && Object.keys(psd).length) {
         if (isBp) entry.platformSpecific = psd;
         else entry.platformSpecificData = psd;
       }
@@ -668,9 +673,9 @@
         .catch(function (e) { toast(e.message, 'error'); });
     });
     if (unpub) unpub.addEventListener('click', function () {
-      if (!confirm('Unpublish this post from all platforms?')) return;
-      api('ajax/action.php', { method: 'POST', body: { action: 'unpublish', postId: unpub.dataset.id, service: 'zernio' } })
-        .then(function () { toast('Post unpublished'); setTimeout(function () { location.reload(); }, 900); })
+      if (!confirm(unpub.dataset.service === 'buffer' ? 'Remove this update from the Buffer queue?' : 'Unpublish this post from all platforms?')) return;
+      api('ajax/action.php', { method: 'POST', body: { action: 'unpublish', postId: unpub.dataset.id, service: svcOf(unpub) } })
+        .then(function () { toast('Done'); setTimeout(function () { location.reload(); }, 900); })
         .catch(function (e) { toast(e.message, 'error'); });
     });
     if (publishNow) publishNow.addEventListener('click', function () {
@@ -737,7 +742,9 @@
       results.forEach(function (r) {
         const svcTag = r.service === 'bulkpublish'
           ? '<span class="text-[9px] font-bold px-1 py-0.5 rounded bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/25">BP</span> '
-          : '<span class="text-[9px] font-bold px-1 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/25">ZN</span> ';
+          : (r.service === 'buffer'
+            ? '<span class="text-[9px] font-bold px-1 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/25">BF</span> '
+            : '<span class="text-[9px] font-bold px-1 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/25">ZN</span> ');
         const txt = r.ok
           ? (dry ? 'OK' : 'Created: ' + svcTag + '<code class="text-emerald-300">' + esc(r.createdPostId || '') + '</code>')
           : '<span class="text-rose-300">' + esc((r.errors || []).join(', ')) + '</span>';

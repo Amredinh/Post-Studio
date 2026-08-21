@@ -2,6 +2,7 @@ ob_start();
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/zernio.php';
 require_once __DIR__ . '/../includes/bulkpublish.php';
+require_once __DIR__ . '/../includes/buffer.php';
 require_once __DIR__ . '/../includes/db.php';
 require_login_ajax();
 
@@ -26,9 +27,13 @@ if (!is_array($platforms) || count($platforms) === 0) {
 // Split channels by service.
 $zernioEntries = [];
 $bpEntries = [];
+$bufferEntries = [];
 foreach ($platforms as $pl) {
-    if (($pl['service'] ?? '') === 'bulkpublish') {
+    $svc = $pl['service'] ?? '';
+    if ($svc === 'bulkpublish') {
         $bpEntries[] = $pl;
+    } elseif ($svc === 'buffer') {
+        $bufferEntries[] = $pl;
     } else {
         $zernioEntries[] = $pl;
     }
@@ -92,6 +97,23 @@ if ($bpEntries) {
             $results[] = ['service' => 'bulkpublish', 'post' => $post, 'message' => 'BulkPublish post created'];
         } catch (Throwable $e) {
             $errors[] = 'BulkPublish: ' . $e->getMessage();
+        }
+    }
+}
+
+// ---- Buffer ----
+if ($bufferEntries) {
+    $buf = buffer_client();
+    if (!$buf) {
+        $errors[] = 'No Buffer access token configured.';
+    } else {
+        try {
+            $bufResult = create_buffer_update($payload, $bufferEntries, $buf);
+            $post = $bufResult['post'];
+            mirror_post($post, $payload, 'buffer', 'composer');
+            $results[] = ['service' => 'buffer', 'post' => $post, 'message' => $bufResult['message']];
+        } catch (Throwable $e) {
+            $errors[] = 'Buffer: ' . $e->getMessage();
         }
     }
 }
@@ -198,6 +220,75 @@ function bp_to_bp_slug(string $platform): string {
         'slack' => 'slack',
     ];
     return $map[$platform] ?? $platform;
+}
+
+/**
+ * Create one Buffer update for all selected Buffer profiles.
+ * The classic Buffer API has no per-platform options or per-platform captions:
+ * one text + optional single image URL goes to every selected profile.
+ */
+function create_buffer_update(array $payload, array $bufferEntries, Buffer $buf): array {
+    $profileIds = [];
+    foreach ($bufferEntries as $e) {
+        if (!empty($e['profileId'])) $profileIds[] = (string)$e['profileId'];
+    }
+    $profileIds = array_values(array_unique(array_filter($profileIds)));
+    if (!$profileIds) {
+        throw new RuntimeException('No valid Buffer profile IDs in selection.');
+    }
+
+    $text = trim((string)($payload['content'] ?? ''));
+    if ($text === '') {
+        throw new RuntimeException('Buffer requires a caption (text) for posts.');
+    }
+
+    // Classic API supports a single image URL only; video is not supported.
+    $photoUrl = null;
+    foreach (($payload['mediaItems'] ?? []) as $m) {
+        if (($m['type'] ?? '') === 'image' && !empty($m['url'])) {
+            $photoUrl = (string)$m['url'];
+            break;
+        }
+        if (($m['type'] ?? '') === 'video') {
+            throw new RuntimeException('Buffer classic API does not support video posts — remove the video or deselect the Buffer channels.');
+        }
+    }
+
+    $opts = [];
+    if (!empty($payload['publishNow'])) {
+        $opts['now'] = true;
+    } elseif (!empty($payload['scheduledFor'])) {
+        $tz = (string)($payload['timezone'] ?? 'UTC');
+        $dt = new DateTime($payload['scheduledFor'], new DateTimeZone($tz));
+        $dt->setTimezone(new DateTimeZone('UTC'));
+        $opts['scheduledAt'] = $dt->format('Y-m-d\TH:i:s\Z');
+    } else {
+        $opts['now'] = true;
+    }
+    if ($photoUrl !== null) $opts['photoUrl'] = $photoUrl;
+
+    $resp = $buf->createUpdate($profileIds, $text, $opts);
+    $updates = $resp['updates'] ?? [];
+    if (!$updates) {
+        throw new RuntimeException('Buffer did not return any updates.');
+    }
+
+    $rawStatus = (string)($updates[0]['status'] ?? '');
+    $status = buffer_map_status($rawStatus);
+    if (!empty($opts['now']) && $status === 'scheduled') $status = 'publishing';
+
+    $post = [
+        '_id' => (string)($updates[0]['id'] ?? ''),
+        'service' => 'buffer',
+        'content' => $text,
+        'status' => $status,
+        'profiles' => count($updates),
+    ];
+
+    return [
+        'post' => $post,
+        'message' => 'Buffer update queued to ' . count($updates) . ' channel' . (count($updates) > 1 ? 's' : ''),
+    ];
 }
 
 /** Mirror a created post into the local posts table (non-fatal). */

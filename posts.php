@@ -4,10 +4,12 @@ $active = 'posts';
 require_once __DIR__ . '/includes/header.php';
 require_once __DIR__ . '/includes/zernio.php';
 require_once __DIR__ . '/includes/bulkpublish.php';
+require_once __DIR__ . '/includes/buffer.php';
 
 $hasZernio = (bool)get_setting('zernio_api_key', '');
 $hasBp = (bool)get_setting('bulkpublish_api_key', '');
-$hasKey = $hasZernio || $hasBp;
+$hasBuffer = (bool)get_setting('buffer_api_key', '');
+$hasKey = $hasZernio || $hasBp || $hasBuffer;
 $error = null;
 $posts = [];
 $pagination = null;
@@ -68,6 +70,34 @@ if ($hasKey) {
         }
     }
 
+    if ($hasBuffer) {
+        try {
+            $buf = new Buffer((string)get_setting('buffer_api_key', ''));
+            foreach (($buf->listProfiles()['profiles'] ?? []) as $prof) {
+                $platform = buffer_map_platform((string)($prof['service'] ?? ''));
+                $pname = $prof['formatted_username'] ?? ($prof['service_username'] ?? '');
+                if ($filters['platform'] !== '' && $platform !== $filters['platform']) continue;
+                // Buffer lists updates per profile: pull pending + sent queues.
+                foreach (['pending', 'sent'] as $queue) {
+                    try {
+                        $updates = $queue === 'pending'
+                            ? $buf->listPending((string)$prof['id'], 50)['updates']
+                            : $buf->listSent((string)$prof['id'], 50)['updates'];
+                        foreach ($updates as $u) {
+                            $item = normalize_buffer_post($u, $platform, $pname);
+                            if ($filters['search'] !== '' && stripos((string)$item['content'], $filters['search']) === false) continue;
+                            $items[] = $item;
+                        }
+                    } catch (Throwable $e) {
+                        // Skip a queue that fails; keep the rest.
+                    }
+                }
+            }
+        } catch (Throwable $e) {
+            $error = trim(($error ? $error . ' | ' : '') . 'Buffer: ' . $e->getMessage());
+        }
+    }
+
     // Sort newest first by scheduled time (falls back to creation time).
     usort($items, function ($a, $b) {
         $ta = $a['_sort'] ?? '';
@@ -102,6 +132,33 @@ function normalize_zernio_post(array $p): array {
         'mediaItems' => $p['mediaItems'] ?? [],
         'platforms' => $platforms,
         '_sort' => $p['scheduledFor'] ?? ($p['createdAt'] ?? ''),
+    ];
+}
+
+function normalize_buffer_post(array $u, string $platform, string $profileName): array {
+    $status = buffer_map_status((string)($u['status'] ?? ''));
+    $scheduled = !empty($u['due_at'])
+        ? date('Y-m-d H:i:s', (int)$u['due_at'])
+        : (!empty($u['scheduled_at']) ? date('Y-m-d H:i:s', (int)$u['scheduled_at']) : null);
+    $media = [];
+    if (!empty($u['media']['photo'])) {
+        $media[] = ['url' => (string)$u['media']['photo'], 'type' => 'image'];
+    }
+    return [
+        '_id' => 'bf' . ($u['id'] ?? ''),
+        'service' => 'buffer',
+        'content' => $u['text'] ?? '',
+        'status' => $status,
+        'scheduledFor' => $scheduled,
+        'mediaItems' => $media,
+        'platforms' => [[
+            'platform' => $platform,
+            'status' => $status,
+            'url' => '',
+            'error' => '',
+            'name' => $profileName,
+        ]],
+        '_sort' => $scheduled ?: (!empty($u['sent_at']) ? date('Y-m-d H:i:s', (int)$u['sent_at']) : ''),
     ];
 }
 
@@ -148,6 +205,9 @@ function service_tag(array $p): string {
     if (($p['service'] ?? '') === 'bulkpublish') {
         return '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/25">BP</span>';
     }
+    if (($p['service'] ?? '') === 'buffer') {
+        return '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/25">BF</span>';
+    }
     return '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/25">ZN</span>';
 }
 
@@ -172,7 +232,7 @@ function platforms_chips(array $p): string {
   <div class="card card-pad flex flex-col sm:flex-row items-start sm:items-center gap-4 justify-between">
     <div>
       <h2 class="text-lg font-semibold">API key required</h2>
-      <p class="text-sm text-slate-400 mt-1">Configure a Zernio and/or BulkPublish API key to view your posts.</p>
+      <p class="text-sm text-slate-400 mt-1">Configure a Zernio, BulkPublish or Buffer key to view your posts.</p>
     </div>
     <a href="settings.php" class="btn btn-primary shrink-0">Go to Settings</a>
   </div>

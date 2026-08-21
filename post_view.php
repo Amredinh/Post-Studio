@@ -4,9 +4,17 @@ $active = 'posts';
 require_once __DIR__ . '/includes/header.php';
 require_once __DIR__ . '/includes/zernio.php';
 require_once __DIR__ . '/includes/bulkpublish.php';
+require_once __DIR__ . '/includes/buffer.php';
 
 $postId = trim($_GET['id'] ?? '');
-$service = trim($_GET['service'] ?? '') === 'bulkpublish' ? 'bulkpublish' : 'zernio';
+$reqService = trim($_GET['service'] ?? '');
+if ($reqService === 'bulkpublish') {
+    $service = 'bulkpublish';
+} elseif ($reqService === 'buffer') {
+    $service = 'buffer';
+} else {
+    $service = 'zernio';
+}
 $view = null;
 $error = null;
 
@@ -20,6 +28,16 @@ if ($postId !== '') {
                 $rawId = preg_replace('/^b/', '', $postId);
                 $post = $bp->getPost($rawId)['post'] ?? $bp->getPost($rawId);
                 $view = normalize_bp_view($post);
+            }
+        } elseif ($service === 'buffer') {
+            $buf = buffer_client();
+            if (!$buf) {
+                $error = 'No Buffer access token configured.';
+            } else {
+                $rawId = preg_replace('/^bf/', '', $postId);
+                $update = $buf->getUpdate($rawId);
+                $profile = !empty($update['profile_id']) ? $buf->getProfile((string)$update['profile_id']) : [];
+                $view = normalize_buffer_view($update, $profile);
             }
         } else {
             $zernio = zernio_client();
@@ -62,6 +80,37 @@ function normalize_zernio_view(array $post): array {
         'mediaItems' => $media,
         'tags' => $post['tags'] ?? [],
         'platforms' => $platforms,
+    ];
+}
+
+function normalize_buffer_view(array $update, array $profile = []): array {
+    $platform = buffer_map_platform((string)($update['profile_service'] ?? ($profile['service'] ?? '')));
+    $media = [];
+    if (!empty($update['media']['photo'])) {
+        $media[] = ['url' => (string)$update['media']['photo'], 'type' => 'image'];
+    }
+    $status = buffer_map_status((string)($update['status'] ?? ''));
+    return [
+        'service' => 'buffer',
+        '_id' => 'bf' . ($update['id'] ?? ''),
+        'title' => 'Buffer update',
+        'content' => $update['text'] ?? '',
+        'status' => $status,
+        // due_at / scheduled_at are unix timestamps in the Buffer API.
+        'scheduledFor' => !empty($update['due_at'])
+            ? date('Y-m-d H:i:s', (int)$update['due_at'])
+            : (!empty($update['scheduled_at']) ? date('Y-m-d H:i:s', (int)$update['scheduled_at']) : null),
+        'timezone' => $profile['timezone'] ?? null,
+        'mediaItems' => $media,
+        'tags' => [],
+        'platforms' => [[
+            'platform' => $platform,
+            'status' => $status,
+            'name' => $profile['formatted_username'] ?? '',
+            'username' => $profile['service_username'] ?? '',
+            'url' => '',
+            'error' => '',
+        ]],
     ];
 }
 
@@ -119,7 +168,13 @@ if ($view['service'] && $view['_id']) {
       <div class="flex items-center gap-3">
         <h2 class="text-lg font-semibold"><?= htmlspecialchars($view['title']) ?></h2>
         <?= status_badge($view['status']) ?>
-        <?= $view['service'] === 'bulkpublish' ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/25">BulkPublish</span>' : '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/25">Zernio</span>' ?>
+        <?php if ($view['service'] === 'bulkpublish'): ?>
+          <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/25">BulkPublish</span>
+        <?php elseif ($view['service'] === 'buffer'): ?>
+          <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/25">Buffer</span>
+        <?php else: ?>
+          <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/25">Zernio</span>
+        <?php endif; ?>
       </div>
       <div class="text-xs text-slate-500 font-mono mt-1"><?= htmlspecialchars($view['_id']) ?></div>
     </div>
@@ -138,6 +193,11 @@ if ($view['service'] && $view['_id']) {
       <?php if (($view['status'] ?? '') === 'draft' && $view['service'] === 'bulkpublish'): ?>
         <button type="button" id="btn-publish-now" data-id="<?= htmlspecialchars($view['_id']) ?>" data-service="bulkpublish" class="btn btn-primary btn-sm">
           Publish now
+        </button>
+      <?php endif; ?>
+      <?php if (in_array($view['status'] ?? '', ['scheduled', 'pending', 'buffered'], true) && $view['service'] === 'buffer'): ?>
+        <button type="button" id="btn-unpublish" data-id="<?= htmlspecialchars($view['_id']) ?>" data-service="buffer" class="btn btn-danger btn-sm">
+          Remove from queue
         </button>
       <?php endif; ?>
     </div>

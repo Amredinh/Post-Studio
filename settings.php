@@ -4,9 +4,11 @@ $active = 'settings';
 require_once __DIR__ . '/includes/header.php';
 require_once __DIR__ . '/includes/zernio.php';
 require_once __DIR__ . '/includes/bulkpublish.php';
+require_once __DIR__ . '/includes/buffer.php';
 
 $zernioKey = (string)get_setting('zernio_api_key', '');
 $bpKey = (string)get_setting('bulkpublish_api_key', '');
+$bufferKey = (string)get_setting('buffer_api_key', '');
 $telegramKey = (string)get_setting('telegram_bot_token', '');
 $message = '';
 $messageType = '';
@@ -45,6 +47,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $bpKey = '';
         $message = 'BulkPublish API key removed.';
         $messageType = 'success';
+    } elseif ($_POST['action'] === 'save_buffer_key') {
+        $newKey = trim($_POST['buffer_api_key'] ?? '');
+        if ($newKey === '') {
+            $message = 'Buffer access token cannot be empty.';
+            $messageType = 'error';
+        } else {
+            set_setting('buffer_api_key', $newKey);
+            $bufferKey = $newKey;
+            $message = 'Buffer access token saved.';
+            $messageType = 'success';
+        }
+    } elseif ($_POST['action'] === 'clear_buffer_key') {
+        set_setting('buffer_api_key', '');
+        $bufferKey = '';
+        $message = 'Buffer access token removed.';
+        $messageType = 'success';
     }
 }
 
@@ -78,6 +96,22 @@ if ($bpKey !== '') {
         ];
     } catch (Throwable $e) {
         $bpTest = ['ok' => false, 'error' => $e->getMessage()];
+    }
+}
+
+$bufferTest = null;
+if ($bufferKey !== '') {
+    try {
+        $buf = new Buffer($bufferKey);
+        $profiles = $buf->listProfiles();
+        $user = $buf->getUser();
+        $bufferTest = [
+            'ok' => true,
+            'profiles' => count($profiles['profiles'] ?? []),
+            'user' => $user['id'] ?? '',
+        ];
+    } catch (Throwable $e) {
+        $bufferTest = ['ok' => false, 'error' => $e->getMessage()];
     }
 }
 ?>
@@ -192,6 +226,58 @@ if ($bpKey !== '') {
     <?php endif; ?>
   </div>
 
+  <!-- Buffer -->
+  <div class="card card-pad mb-6">
+    <div class="flex items-center justify-between mb-1">
+      <h2 class="text-base font-semibold">Buffer access token</h2>
+      <?php if ($bufferTest && $bufferTest['ok']): ?>
+        <span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/25">connected</span>
+      <?php elseif ($bufferKey): ?>
+        <span class="text-[11px] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-300 border border-rose-500/25">error</span>
+      <?php endif; ?>
+    </div>
+    <p class="text-sm text-slate-500 mb-5">
+      Third posting service (classic v1 API). Queues posts to your Buffer channels. Create an app at
+      <a href="https://buffer.com/developers/apps" target="_blank" rel="noopener" class="text-violet-400 hover:text-violet-300">buffer.com/developers/apps</a>
+      and authorize it to get an access token. See the <a href="tools.php" class="text-violet-400 hover:text-violet-300">Tools page</a> for free-tier limits.
+    </p>
+
+    <form method="post" class="space-y-4">
+      <input type="hidden" name="csrf" value="<?= csrf_token() ?>">
+      <div>
+        <label class="label">Access token <?= $bufferKey ? '<span class="text-emerald-400 normal-case">(saved)</span>' : '' ?></label>
+        <input type="password" name="buffer_api_key" class="input font-mono" placeholder="Buffer access token…" value="">
+        <p class="text-xs text-slate-600 mt-2">
+          <?= $bufferKey ? 'A token is currently saved (hidden). Paste a new one to replace it, or leave blank and use Remove.' : 'No token saved yet.' ?>
+        </p>
+      </div>
+      <div class="flex gap-3">
+        <button type="submit" name="action" value="save_buffer_key" class="btn btn-primary">Save token</button>
+        <?php if ($bufferKey): ?>
+          <button type="submit" name="action" value="clear_buffer_key" class="btn btn-ghost" onclick="return confirm('Remove the saved Buffer access token?')">Remove</button>
+        <?php endif; ?>
+      </div>
+    </form>
+
+    <?php if ($bufferKey && $bufferTest): ?>
+      <div class="mt-4">
+        <?php if ($bufferTest['ok']): ?>
+          <div class="flex items-center gap-3 p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/25">
+            <span class="w-3 h-3 rounded-full bg-emerald-400"></span>
+            <div class="text-sm">
+              <strong class="text-emerald-300">Connected</strong>
+              <span class="text-slate-400"> · <?= $bufferTest['profiles'] ?> channels<?= $bufferTest['user'] !== '' ? ' · user ' . htmlspecialchars((string)$bufferTest['user']) : '' ?></span>
+            </div>
+          </div>
+        <?php else: ?>
+          <div class="px-4 py-3 rounded-xl text-sm text-rose-200 bg-rose-500/10 border border-rose-500/30">
+            <strong>Connection failed:</strong> <?= htmlspecialchars($bufferTest['error']) ?>
+          </div>
+        <?php endif; ?>
+      </div>
+    <?php endif; ?>
+  </div>
+
   <!-- Telegram Bot -->
   <div class="card card-pad mb-6">
     <h2 class="text-base font-semibold mb-3">Telegram Bot</h2>
@@ -205,8 +291,8 @@ if ($bpKey !== '') {
     <ul class="text-sm text-slate-400 space-y-1.5 list-disc list-inside">
       <li>Database tables are created by importing <code class="text-violet-300">install.sql</code> in phpMyAdmin.</li>
       <li>Edit <code class="text-violet-300">config.php</code> if your database host / credentials differ.</li>
-      <li>Zernio media uploads go straight to Zernio's storage (presigned URLs). BulkPublish media is uploaded through this server to <code class="text-violet-300">POST /api/media</code>.</li>
-      <li>When channels from both services are selected in one post, two posts are created (one per service).</li>
+      <li>Zernio media uploads go straight to Zernio's storage (presigned URLs). BulkPublish media is uploaded through this server to <code class="text-violet-300">POST /api/media</code>. Buffer uses public image URLs from its classic API.</li>
+      <li>When channels from multiple services are selected in one post, one post per service is created.</li>
     </ul>
   </div>
 </div>

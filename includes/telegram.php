@@ -54,11 +54,8 @@ class Telegram {
         $curlErr = curl_error($ch);
 
         if ($curlErr !== '') {
-            curl_close($ch);
             throw new TelegramException('Connection error: ' . $curlErr);
         }
-
-        curl_close($ch);
 
         $decoded = json_decode($raw, true);
         if (!is_array($decoded)) {

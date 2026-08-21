@@ -4,16 +4,20 @@ $active = 'dashboard';
 require_once __DIR__ . '/includes/header.php';
 require_once __DIR__ . '/includes/zernio.php';
 require_once __DIR__ . '/includes/bulkpublish.php';
+require_once __DIR__ . '/includes/buffer.php';
 
 $zernio = zernio_client();
 $bp = bulkpublish_client();
-$hasKey = $zernio || $bp;
+$buf = buffer_client();
+$hasKey = $zernio || $bp || $buf;
 $error = null;
 $accounts = [];
 $zernioCount = 0;
 $bpCount = 0;
+$bufferCount = 0;
 $zernioFailed = false;
 $bpFailed = false;
+$bufferFailed = false;
 
 if ($zernio) {
     try {
@@ -60,6 +64,29 @@ if ($bp) {
     }
 }
 
+if ($buf) {
+    try {
+        $bufferProfiles = $buf->listProfiles()['profiles'] ?? [];
+        foreach ($bufferProfiles as $p) {
+            $platform = buffer_map_platform((string)($p['service'] ?? ''));
+            $accounts[] = [
+                'service' => 'buffer',
+                'serviceLabel' => 'Buffer',
+                'serviceTag' => 'BF',
+                'serviceClass' => 'bg-sky-500/15 text-sky-300 border border-sky-500/25',
+                'platform' => $platform,
+                'displayName' => ($p['formatted_username'] ?? '') ?: ($p['display_name'] ?? ''),
+                'username' => $p['formatted_username'] ?? ($p['service_username'] ?? ''),
+                '_id' => 'bf' . ($p['id'] ?? ''),
+            ];
+        }
+        $bufferCount = count($bufferProfiles);
+    } catch (Throwable $e) {
+        $bufferFailed = true;
+        $error = trim(($error ? $error . ' | ' : '') . 'Buffer: ' . $e->getMessage());
+    }
+}
+
 $byPlatform = [];
 foreach ($accounts as $a) {
     $plat = $a['platform'] ?? 'other';
@@ -85,7 +112,7 @@ $platformCount = count($byPlatform);
 <?php endif; ?>
 
 <?php if ($hasKey): ?>
-  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+  <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
     <div class="card card-pad stat-tile">
       <div class="text-3xl font-bold"><?= count($accounts) ?></div>
       <div class="text-xs text-slate-500 mt-1">Connected channels</div>
@@ -101,6 +128,10 @@ $platformCount = count($byPlatform);
     <div class="card card-pad stat-tile">
       <div class="text-3xl font-bold <?= $bpFailed ? 'text-slate-600' : '' ?>"><?= $bpCount ?></div>
       <div class="text-xs text-slate-500 mt-1">BulkPublish channels<?= $bpFailed ? ' (unavailable)' : '' ?></div>
+    </div>
+    <div class="card card-pad stat-tile">
+      <div class="text-3xl font-bold <?= $bufferFailed ? 'text-slate-600' : '' ?>"><?= $bufferCount ?></div>
+      <div class="text-xs text-slate-500 mt-1">Buffer channels<?= $bufferFailed ? ' (unavailable)' : '' ?></div>
     </div>
   </div>
 

@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/zernio.php';
 require_once __DIR__ . '/../includes/bulkpublish.php';
+require_once __DIR__ . '/../includes/buffer.php';
 require_once __DIR__ . '/../includes/platforms.php';
 require_login_ajax();
 
@@ -9,14 +10,15 @@ header('Content-Type: application/json');
 
 $zernio = zernio_client();
 $bp = bulkpublish_client();
+$buf = buffer_client();
 
-if (!$zernio && !$bp) {
+if (!$zernio && !$bp && !$buf) {
     http_response_code(400);
-    echo json_encode(['ok' => false, 'error' => 'No API key configured. Add a Zernio and/or BulkPublish key in Settings.']);
+    echo json_encode(['ok' => false, 'error' => 'No API key configured. Add a Zernio and/or BulkPublish and/or Buffer key in Settings.']);
     exit;
 }
 
-$services = ['zernio' => (bool)$zernio, 'bulkpublish' => (bool)$bp];
+$services = ['zernio' => (bool)$zernio, 'bulkpublish' => (bool)$bp, 'buffer' => (bool)$buf];
 $accounts = [];
 $errors = [];
 
@@ -61,6 +63,32 @@ try {
     }
 } catch (Throwable $e) {
     $errors[] = 'BulkPublish: ' . $e->getMessage();
+}
+
+try {
+    if ($buf) {
+        $profiles = $buf->listProfiles()['profiles'] ?? [];
+        foreach ($profiles as $p) {
+            $platform = buffer_map_platform((string)($p['service'] ?? ''));
+            $meta = platform_meta($platform);
+            $accounts[] = [
+                'service' => 'buffer',
+                '_id' => 'bf' . ($p['id'] ?? ''),
+                'profileId' => $p['id'] ?? '',
+                'platform' => $platform,
+                'displayName' => $p['formatted_username'] ?: ($p['display_name'] ?? ($p['service_username'] ?? '')),
+                'username' => $p['formatted_username'] ?? ($p['service_username'] ?? ''),
+                'avatarUrl' => $p['avatar_https'] ?? ($p['avatar'] ?? null),
+                'accountId' => $p['service_id'] ?? null,
+                'followers' => $p['statistics']['followers'] ?? null,
+                'timezone' => $p['timezone'] ?? null,
+                'color' => $meta['color'],
+                'short' => $meta['short'],
+            ];
+        }
+    }
+} catch (Throwable $e) {
+    $errors[] = 'Buffer: ' . $e->getMessage();
 }
 
 if (!$accounts && $errors) {

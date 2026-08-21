@@ -164,7 +164,6 @@ elseif (str_starts_with($text, '/post ') || $photo || $video || $document) {
                         curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: $mimeType"]);
                         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
                         curl_exec($ch);
-                        curl_close($ch);
                         $zernioPayload['mediaItems'] = [['url' => $zUrl, 'type' => $mediaType]];
                     }
                     if ($bp) {

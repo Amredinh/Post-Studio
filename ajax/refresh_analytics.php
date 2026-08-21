@@ -3,14 +3,16 @@ ob_start();
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/zernio.php';
 require_once __DIR__ . '/../includes/bulkpublish.php';
+require_once __DIR__ . '/../includes/buffer.php';
 require_login_ajax();
 
 header('Content-Type: application/json');
 
 $zernioKey = (string)get_setting('zernio_api_key', '');
 $bpKey = (string)get_setting('bulkpublish_api_key', '');
+$bufferKey = (string)get_setting('buffer_api_key', '');
 
-if (!$zernioKey && !$bpKey) {
+if (!$zernioKey && !$bpKey && !$bufferKey) {
     ob_end_clean();
     http_response_code(400);
     echo json_encode(['ok' => false, 'error' => 'API keys are not configured.']);
@@ -110,6 +112,38 @@ try {
     }
 } catch (Throwable $e) {
     $errors[] = 'BulkPublish Analytics: ' . $e->getMessage();
+}
+
+try {
+    if ($bufferKey) {
+        $buf = new Buffer($bufferKey);
+        foreach (($buf->listProfiles()['profiles'] ?? []) as $prof) {
+            $platform = buffer_map_platform((string)($prof['service'] ?? ''));
+            try {
+                foreach ($buf->listSent((string)($prof['id'] ?? ''), 50)['updates'] as $u) {
+                    $stats = $u['statistics'] ?? [];
+                    $tsTime = (int)($u['sent_at'] ?? ($u['due_at'] ?? ($u['created_at'] ?? 0)));
+                    $allPosts[] = [
+                        '_id' => 'bf' . ($u['id'] ?? ''),
+                        'service' => 'buffer',
+                        'content' => $u['text'] ?? '',
+                        'status' => buffer_map_status((string)($u['status'] ?? 'sent')),
+                        'platforms' => [['platform' => $platform]],
+                        'metrics' => [
+                            'likes' => (int)($stats['favorites'] ?? 0),
+                            'comments' => (int)($stats['mentions'] ?? 0),
+                            'views' => (int)($stats['reach'] ?? 0)
+                        ],
+                        '_sortTime' => $tsTime
+                    ];
+                }
+            } catch (Throwable $e) {
+                // One failing profile queue shouldn't kill Buffer analytics.
+            }
+        }
+    }
+} catch (Throwable $e) {
+    $errors[] = 'Buffer Analytics: ' . $e->getMessage();
 }
 
 usort($allPosts, function($a, $b) {
