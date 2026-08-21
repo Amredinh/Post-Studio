@@ -17,6 +17,21 @@ if (!$zernioKey && !$bpKey) {
     exit;
 }
 
+$force = isset($_GET['force']) && $_GET['force'] == '1';
+
+if (!$force) {
+    $cached = get_setting('analytics_cache', '');
+    if ($cached !== '') {
+        $cacheData = json_decode($cached, true);
+        if (is_array($cacheData)) {
+            $cacheData['cached'] = true;
+            ob_end_clean();
+            echo json_encode($cacheData);
+            exit;
+        }
+    }
+}
+
 $allPosts = [];
 $errors = [];
 
@@ -36,9 +51,9 @@ try {
                 'status' => $p['status'] ?? '',
                 'platforms' => $platforms,
                 'metrics' => [
-                    'likes' => $p['metrics']['likes'] ?? rand(0, 150),
-                    'comments' => $p['metrics']['comments'] ?? rand(0, 50),
-                    'views' => $p['metrics']['views'] ?? rand(100, 5000)
+                    'likes' => $p['metrics']['likes'] ?? 0,
+                    'comments' => $p['metrics']['comments'] ?? 0,
+                    'views' => $p['metrics']['views'] ?? 0
                 ],
                 '_sortTime' => strtotime($p['createdAt'] ?? 'now')
             ];
@@ -64,9 +79,9 @@ try {
                 'status' => $p['status'] ?? '',
                 'platforms' => $platforms,
                 'metrics' => [
-                    'likes' => $p['metrics']['likes'] ?? rand(0, 150),
-                    'comments' => $p['metrics']['comments'] ?? rand(0, 50),
-                    'views' => $p['metrics']['views'] ?? rand(100, 5000)
+                    'likes' => $p['metrics']['likes'] ?? 0,
+                    'comments' => $p['metrics']['comments'] ?? 0,
+                    'views' => $p['metrics']['views'] ?? 0
                 ],
                 '_sortTime' => strtotime($p['createdAt'] ?? 'now')
             ];
@@ -102,6 +117,10 @@ $response = [
 
 if (!empty($errors)) {
     $response['warnings'] = $errors;
+    $response['rate_limited_or_error'] = true;
+} else {
+    // Only save cache if no major errors occurred
+    set_setting('analytics_cache', json_encode($response));
 }
 
 ob_end_clean();

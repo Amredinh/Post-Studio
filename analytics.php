@@ -76,18 +76,21 @@ document.addEventListener('DOMContentLoaded', () => {
         })[match]);
     };
 
-    btnRefresh.addEventListener('click', async () => {
+    const loadAnalytics = async (forceAPI = false) => {
         btnRefresh.disabled = true;
-        btnRefresh.querySelector('span').textContent = 'Refreshing...';
+        btnRefresh.querySelector('span').textContent = forceAPI ? 'Refreshing...' : 'Loading...';
         btnRefresh.classList.add('opacity-75');
 
         content.classList.add('hidden');
         empty.classList.add('hidden');
         errorEl.classList.add('hidden');
+        errorEl.classList.remove('text-amber-200', 'bg-amber-500/10', 'border-amber-500/30');
+        errorEl.classList.add('text-rose-200', 'bg-rose-500/10', 'border-rose-500/30');
         loading.classList.remove('hidden');
 
         try {
-            const res = await fetch('ajax/refresh_analytics.php');
+            const url = 'ajax/refresh_analytics.php' + (forceAPI ? '?force=1' : '');
+            const res = await fetch(url);
             const data = await res.json();
             
             if (!res.ok || !data.ok) {
@@ -95,6 +98,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             loading.classList.add('hidden');
+            
+            if (data.rate_limited_or_error || (data.warnings && data.warnings.length > 0)) {
+                errorEl.innerHTML = '<strong>Heads Up:</strong> Some platforms could not be refreshed right now (likely rate limited). Displaying the most recent available analytics.';
+                errorEl.classList.remove('text-rose-200', 'bg-rose-500/10', 'border-rose-500/30');
+                errorEl.classList.add('text-amber-200', 'bg-amber-500/10', 'border-amber-500/30');
+                errorEl.classList.remove('hidden');
+            } else if (data.cached) {
+                // Just optionally highlight it's cached data, but maybe leave it out to not spam the user
+            }
             
             if (!data.posts || data.posts.length === 0) {
                 empty.classList.remove('hidden');
@@ -169,10 +181,12 @@ document.addEventListener('DOMContentLoaded', () => {
             btnRefresh.querySelector('span').textContent = 'Refresh Analytics';
             btnRefresh.classList.remove('opacity-75');
         }
-    });
+    };
 
-    // Auto-trigger refresh on page load
-    btnRefresh.click();
+    btnRefresh.addEventListener('click', () => loadAnalytics(true));
+
+    // Auto-trigger cached load on page load
+    loadAnalytics(false);
 });
 </script>
 

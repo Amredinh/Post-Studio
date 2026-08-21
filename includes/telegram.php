@@ -74,7 +74,7 @@ class Telegram {
     }
 
     /** GET https://api.telegram.org/bot<token>/getUpdates */
-    public function getUpdates(int $offset = 0, int $limit = 100, string $timeout = 0): array {
+    public function getUpdates(int $offset = 0, int $limit = 100, int $timeout = 0): array {
         return $this->request('getUpdates', null, ['offset' => $offset, 'limit' => $limit, 'timeout' => $timeout]);
     }
 
