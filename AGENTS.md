@@ -140,6 +140,7 @@ poster/
 ├── config.example.php         tracked template; copy to config.php and fill in
 ├── install.sql                schema (see Section 4)
 ├── .htaccess                  (provided for cPanel)
+├── .cpanel.yml                cPanel Git Version Control deploy config: rsync clone -> docroot, excludes config.php/*.md/*.sql/.git*
 ├── .gitignore                 excludes note.md, config.php and OS junk (real config never enters git)
 ├── AGENTS.md                  this guide
 ├── README.md                  GitHub-facing overview + setup
@@ -654,6 +655,16 @@ code. Instead use one of:
    SSH) before clicking **Update from Remote**.
 3. After the pull succeeds, restore the backed-up `config.php` into the site root.
 4. Future updates no longer touch the file — no more conflicts.
+
+**Automated deploys (`.cpanel.yml`):**
+- cPanel's Git Version Control runs the tasks in `.cpanel.yml` after every successful
+  "Update from Remote": rsync from cPanel's clone directory into `DEPLOYPATH`
+  (`/home/USERNAME/public_html/` — edit USERNAME, or point at a subfolder).
+- Excludes: `config*`, `*.md`, `*.sql`, `.git*`, `.cpanel.yml`. No `--delete`, so nothing
+  on the server is ever removed by a deploy and the live `config.php` is never touched.
+- cPanel requirements for the deploy button to appear: valid `.cpanel.yml` present AND no
+  uncommitted changes on the checked-out branch of its clone (run `git stash` there if a
+  hotfix was ever edited live).
 
 ---
 
