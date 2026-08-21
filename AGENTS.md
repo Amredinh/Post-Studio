@@ -62,7 +62,7 @@ These are cPanel MySQL credentials. Do not commit real secrets anywhere else.
 
 ## 4. Database schema (`install.sql`)
 
-Run/import `install.sql` in phpMyAdmin on the target DB. Three tables:
+Run/import `install.sql` in phpMyAdmin on the target DB. Four tables:
 
 ### `users`
 | Column | Type | Notes |
@@ -75,12 +75,15 @@ Run/import `install.sql` in phpMyAdmin on the target DB. Three tables:
 First-run: `login.php` creates an admin if the table is empty (see Section 8).
 
 ### `settings`
-Key/value store (`key` VARCHAR(100) PK, `value` TEXT). Important keys:
+Key/value store (`key` VARCHAR(100) PK, `value` MEDIUMTEXT — upgraded from TEXT so the
+analytics cache JSON can exceed 64 KB). Important keys:
 
 | Key | Meaning |
 |---|---|
 | `zernio_api_key` | Zernio API key (`sk_...`) |
 | `bulkpublish_api_key` | BulkPublish API key (`bp_...`) |
+| `telegram_bot_token` | Telegram bot token (used by telegram.php / webhook) |
+| `analytics_cache` | JSON snapshot of the last successful analytics fetch (see Section 7.7) |
 
 Add new keys with `set_setting()` / read with `get_setting()` (in `includes/db.php`).
 The schema does not need to change for new settings.
@@ -108,6 +111,21 @@ service's API).
 service ...` and `ADD INDEX IF NOT EXISTS idx_service` so old databases can be upgraded by
 re-importing the file.
 
+### `posts_engagement`
+One row per viewed post — records that a post detail page was opened (`post_view.php`
+calls `increment_engagement()`; the total is shown on the Analytics header).
+
+| Column | Type | Notes |
+|---|---|---|
+| id | INT AUTO_INCREMENT PK | |
+| service | VARCHAR(20) | `zernio` / `bulkpublish` |
+| post_id | VARCHAR(64) | service post ID |
+| viewed_at | TIMESTAMP | last time the post was viewed |
+
+`UNIQUE KEY uk_service_post (service, post_id)` makes `ON DUPLICATE KEY UPDATE` in
+`increment_engagement()` upsert the `viewed_at` timestamp. The install file de-duplicates
+legacy rows before swapping the old plain index for the unique one, so re-importing is safe.
+
 ---
 
 ## 5. File structure (what each file does)
@@ -132,7 +150,7 @@ poster/
 ├── settings.php               manage both API keys + connection tests
 ├── includes/
 │   ├── auth.php               sessions, CSRF, require_login / require_login_ajax, is_logged_in, user_count
-│   ├── db.php                 PDO helper: db(), get_setting(), set_setting()
+│   ├── db.php                 PDO helper: db(), get_setting(), set_setting(), increment_engagement(), get_engagement_views()
 │   ├── zernio.php             Zernio API client class + zernio_client() factory
 │   ├── bulkpublish.php        BulkPublish API client class + bulkpublish_client() + bp_map_platform()
 │   ├── platforms.php          platform_meta(), platform_badge(), status_badge(), platform_list()
@@ -434,8 +452,32 @@ Everything below was verified during development:
 
 **New Enhancements (post-fix):**
 - `ajax/create_post.php` — success message now properly displays per-service results; errors are surfaced in the UI safely for mixed submissions.
-- `analytics.php` + `ajax/refresh_analytics.php` — dedicated dashboard correctly pulls, aggregates, and renders reach and interaction metrics.
-- `telegram.php` + `ajax/telegram_bot.php` — Telegram bot webhook receiver rebuilt for fully stateless, interactive multi-media posting and instant status/analytics access.
+- `analytics.php` + `ajax/refresh_analytics.php` — dedicated dashboard correctly pulls, aggregates, and renders reach and interaction metrics. Includes local DB-based caching (settings array) to preserve external API rate limits, fetching via `?force=0` load loop automatically.
+- `telegram.php` + `ajax/telegram_bot.php` — Telegram bot webhook receiver rebuilt for fully stateless, interactive multi-media posting and instant status/analytics access. Fixed string-int timeout type mismatch in SDK.
+
+**Dashboard/Analytics hardening round:**
+- `ajax/refresh_analytics.php` — analytics cache now carries a `cached_at` timestamp with a
+  30-minute TTL for page loads and a 60-second throttle on forced refreshes (`throttled`
+  flag returned) to protect free-tier API quotas. Cached post content is trimmed to 300
+  chars; cache writes are wrapped in try/catch so a failed write can never 500 the endpoint.
+  Post limit raised 50 → 100 per service; posts with missing `createdAt` now sort oldest
+  instead of "now".
+- `analytics.php` — renders real per-service warnings instead of a hardcoded "rate limited"
+  guess; handles session-expiry (401 / bad JSON) gracefully; error state no longer shows the
+  empty state at the same time; numbers formatted via `toLocaleString()`; freshness badge
+  ("Updated X min ago") driven by `cached_at`; header shows total tracked post views from
+  `get_engagement_views()`.
+- `index.php` — dashboard no longer blanks when one service fails: stats and channels render
+  from whichever service responded, with "(unavailable)" markers on failed services. Group
+  badges show amber "token issues" / gray "offline" based on channel token state; per-channel
+  tags added for `expiring_soon` and BP `isActive === false`; platform grouping guarded with
+  `$a['platform'] ?? 'other'`.
+- `includes/db.php` — fixed invalid SQL in `increment_engagement()` (missing `UPDATE`
+  keyword in `ON DUPLICATE KEY UPDATE`, which made every call fail silently).
+- `install.sql` — `settings.value` upgraded TEXT → MEDIUMTEXT; `posts_engagement` de-duped
+  and its plain `(service, post_id)` index replaced by `UNIQUE KEY uk_service_post` so the
+  upsert actually dedupes (guarded `DROP INDEX IF EXISTS` + `ADD UNIQUE INDEX IF NOT EXISTS`,
+  MariaDB syntax per MDEV-4437 fix in 10.0.6).
 
 ---
 
@@ -445,7 +487,8 @@ Everything below was verified during development:
    (MariaDB download timed out). Auth/dashboard/DB code paths are linted and logic-tested,
    but not integration-tested against a live database.
 2. **Posts pagination** — `posts.php` fetches the first 100 posts per service and paginates
-   locally, so results beyond ~100 posts per service are not reachable. Fine for now.
+   locally, so results beyond ~100 posts per service are not reachable. The analytics
+   dashboard has the same 100-post-per-service cap. Fine for now.
 3. **BulkPublish large media** — single-request uploads capped at 100 MB; the chunked
    multipart flow (up to 1 GB) is documented but not implemented.
 4. **Mixed-service media** — when both services are selected, media uploaded via Zernio

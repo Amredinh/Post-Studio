@@ -10,8 +10,11 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS settings (
   `key` VARCHAR(100) NOT NULL PRIMARY KEY,
-  `value` TEXT
+  `value` MEDIUMTEXT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Upgrade older installs where value was TEXT (analytics cache can exceed 64 KB).
+ALTER TABLE settings MODIFY `value` MEDIUMTEXT;
 
 CREATE TABLE IF NOT EXISTS posts (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -41,5 +44,13 @@ CREATE TABLE IF NOT EXISTS posts_engagement (
   service VARCHAR(20) NOT NULL DEFAULT 'zernio',
   post_id VARCHAR(64) NOT NULL,
   viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_service_post (service, post_id)
+  UNIQUE KEY uk_service_post (service, post_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Migration for older installs: de-duplicate engagement rows (keep the earliest),
+-- then replace the plain index with a UNIQUE one so ON DUPLICATE KEY works.
+DELETE e1 FROM posts_engagement e1
+JOIN posts_engagement e2
+  ON e1.service = e2.service AND e1.post_id = e2.post_id AND e1.id > e2.id;
+ALTER TABLE posts_engagement DROP INDEX IF EXISTS idx_service_post;
+ALTER TABLE posts_engagement ADD UNIQUE INDEX IF NOT EXISTS uk_service_post (service, post_id);

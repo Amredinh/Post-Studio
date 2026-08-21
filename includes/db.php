@@ -43,7 +43,7 @@ function increment_engagement(string $service, string $postId): void {
     try {
         $stmt = db()->prepare(
             'INSERT INTO posts_engagement (service, post_id, viewed_at) VALUES (?, ?, NOW())
-             ON DUPLICATE KEY viewed_at = VALUES(viewed_at)'
+             ON DUPLICATE KEY UPDATE viewed_at = VALUES(viewed_at)'
         );
         $stmt->execute([$service, $postId]);
     } catch (Throwable $e) {

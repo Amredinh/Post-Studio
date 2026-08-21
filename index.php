@@ -12,6 +12,8 @@ $error = null;
 $accounts = [];
 $zernioCount = 0;
 $bpCount = 0;
+$zernioFailed = false;
+$bpFailed = false;
 
 if ($zernio) {
     try {
@@ -25,8 +27,10 @@ if ($zernio) {
         }
         $zernioCount = count($zAccounts);
     } catch (ZernioException $e) {
+        $zernioFailed = true;
         $error = 'Zernio: ' . $e->getMessage();
     } catch (Throwable $e) {
+        $zernioFailed = true;
         $error = 'Connection failed: ' . $e->getMessage();
     }
 }
@@ -46,17 +50,20 @@ if ($bp) {
                 'username' => $c['accountName'] ?? ($c['accountId'] ?? ''),
                 '_id' => 'b' . $c['id'],
                 'tokenStatus' => $c['tokenStatus'] ?? null,
+                'isActive' => $c['isActive'] ?? true,
             ];
         }
         $bpCount = count($bpChannels);
     } catch (Throwable $e) {
+        $bpFailed = true;
         $error = trim(($error ? $error . ' | ' : '') . 'BulkPublish: ' . $e->getMessage());
     }
 }
 
 $byPlatform = [];
 foreach ($accounts as $a) {
-    $byPlatform[$a['platform']][] = $a;
+    $plat = $a['platform'] ?? 'other';
+    $byPlatform[$plat][] = $a;
 }
 $platformCount = count($byPlatform);
 ?>
@@ -77,7 +84,7 @@ $platformCount = count($byPlatform);
   </div>
 <?php endif; ?>
 
-<?php if ($hasKey && !$error): ?>
+<?php if ($hasKey): ?>
   <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
     <div class="card card-pad stat-tile">
       <div class="text-3xl font-bold"><?= count($accounts) ?></div>
@@ -88,12 +95,12 @@ $platformCount = count($byPlatform);
       <div class="text-xs text-slate-500 mt-1">Platforms</div>
     </div>
     <div class="card card-pad stat-tile">
-      <div class="text-3xl font-bold"><?= $zernioCount ?></div>
-      <div class="text-xs text-slate-500 mt-1">Zernio accounts</div>
+      <div class="text-3xl font-bold <?= $zernioFailed ? 'text-slate-600' : '' ?>"><?= $zernioCount ?></div>
+      <div class="text-xs text-slate-500 mt-1">Zernio accounts<?= $zernioFailed ? ' (unavailable)' : '' ?></div>
     </div>
     <div class="card card-pad stat-tile">
-      <div class="text-3xl font-bold"><?= $bpCount ?></div>
-      <div class="text-xs text-slate-500 mt-1">BulkPublish channels</div>
+      <div class="text-3xl font-bold <?= $bpFailed ? 'text-slate-600' : '' ?>"><?= $bpCount ?></div>
+      <div class="text-xs text-slate-500 mt-1">BulkPublish channels<?= $bpFailed ? ' (unavailable)' : '' ?></div>
     </div>
   </div>
 
@@ -109,7 +116,15 @@ $platformCount = count($byPlatform);
     </div>
   <?php else: ?>
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      <?php foreach ($byPlatform as $platform => $list): $meta = platform_meta($platform); ?>
+      <?php foreach ($byPlatform as $platform => $list): $meta = platform_meta($platform);
+            $expCount = 0; $expSoonCount = 0; $offCount = 0;
+            foreach ($list as $a) {
+                $ts = $a['tokenStatus'] ?? null;
+                if ($ts === 'expired') $expCount++;
+                elseif ($ts === 'expiring_soon') $expSoonCount++;
+                if (array_key_exists('isActive', $a) && $a['isActive'] === false) $offCount++;
+            }
+      ?>
         <div class="card overflow-hidden">
           <div class="px-5 py-4 flex items-center justify-between border-b border-slate-800">
             <div class="flex items-center gap-3">
@@ -119,7 +134,13 @@ $platformCount = count($byPlatform);
                 <div class="text-[11px] text-slate-500"><?= count($list) ?> channel<?= count($list) > 1 ? 's' : '' ?></div>
               </div>
             </div>
-            <span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/25">connected</span>
+            <?php if ($offCount === count($list)): ?>
+              <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-500/10 text-slate-400 border border-slate-500/25">offline</span>
+            <?php elseif ($expCount > 0 || $expSoonCount > 0): ?>
+              <span class="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/25">token issues</span>
+            <?php else: ?>
+              <span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/25">connected</span>
+            <?php endif; ?>
           </div>
           <div class="divide-y divide-slate-800/60">
             <?php foreach ($list as $a): ?>
@@ -132,8 +153,13 @@ $platformCount = count($byPlatform);
                   <div class="text-xs text-slate-500 truncate"><?= htmlspecialchars($a['username'] ?? '') ?></div>
                 </div>
                 <div class="flex items-center gap-2 shrink-0 ml-3">
-                  <?php if ($a['tokenStatus'] === 'expired'): ?>
+                  <?php if (($a['tokenStatus'] ?? null) === 'expired'): ?>
                     <span class="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-300">expired</span>
+                  <?php elseif (($a['tokenStatus'] ?? null) === 'expiring_soon'): ?>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300">expiring soon</span>
+                  <?php endif; ?>
+                  <?php if (isset($a['isActive']) && $a['isActive'] === false): ?>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-600/20 text-slate-400">offline</span>
                   <?php endif; ?>
                   <?php if (!empty($a['profileUrl'])): ?>
                     <a href="<?= htmlspecialchars($a['profileUrl']) ?>" target="_blank" rel="noopener" class="text-slate-500 hover:text-violet-300" title="Open profile">

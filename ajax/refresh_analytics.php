@@ -19,15 +19,36 @@ if (!$zernioKey && !$bpKey) {
 
 $force = isset($_GET['force']) && $_GET['force'] == '1';
 
+const ANALYTICS_CACHE_TTL = 1800;
+const ANALYTICS_FORCE_THROTTLE = 60;
+
 if (!$force) {
     $cached = get_setting('analytics_cache', '');
     if ($cached !== '') {
         $cacheData = json_decode($cached, true);
-        if (is_array($cacheData)) {
-            $cacheData['cached'] = true;
-            ob_end_clean();
-            echo json_encode($cacheData);
-            exit;
+        if (is_array($cacheData) && isset($cacheData['cached_at'])) {
+            if (time() - (int)$cacheData['cached_at'] < ANALYTICS_CACHE_TTL) {
+                $cacheData['cached'] = true;
+                ob_end_clean();
+                echo json_encode($cacheData);
+                exit;
+            }
+        }
+    }
+}
+
+if ($force) {
+    $cached = get_setting('analytics_cache', '');
+    if ($cached !== '') {
+        $cacheData = json_decode($cached, true);
+        if (is_array($cacheData) && isset($cacheData['cached_at'])) {
+            if (time() - (int)$cacheData['cached_at'] < ANALYTICS_FORCE_THROTTLE) {
+                $cacheData['throttled'] = true;
+                $cacheData['cached'] = true;
+                ob_end_clean();
+                echo json_encode($cacheData);
+                exit;
+            }
         }
     }
 }
@@ -38,7 +59,7 @@ $errors = [];
 try {
     if ($zernioKey) {
         $zernio = new Zernio($zernioKey);
-        $data = $zernio->listPosts(['limit' => 50]);
+        $data = $zernio->listPosts(['limit' => 100]);
         foreach (($data['posts'] ?? []) as $p) {
             $platforms = [];
             foreach (($p['platforms'] ?? []) as $pl) {
@@ -55,7 +76,7 @@ try {
                     'comments' => $p['metrics']['comments'] ?? 0,
                     'views' => $p['metrics']['views'] ?? 0
                 ],
-                '_sortTime' => strtotime($p['createdAt'] ?? 'now')
+                '_sortTime' => strtotime($p['createdAt'] ?? '') ?: 0
             ];
         }
     }
@@ -66,7 +87,7 @@ try {
 try {
     if ($bpKey) {
         $bp = new BulkPublish($bpKey);
-        $data = $bp->listPosts(['limit' => 50]);
+        $data = $bp->listPosts(['limit' => 100]);
         foreach (($data['posts'] ?? []) as $p) {
             $platforms = [];
             foreach (($p['postPlatforms'] ?? []) as $pl) {
@@ -83,7 +104,7 @@ try {
                     'comments' => $p['metrics']['comments'] ?? 0,
                     'views' => $p['metrics']['views'] ?? 0
                 ],
-                '_sortTime' => strtotime($p['createdAt'] ?? 'now')
+                '_sortTime' => strtotime($p['createdAt'] ?? '') ?: 0
             ];
         }
     }
@@ -91,7 +112,6 @@ try {
     $errors[] = 'BulkPublish Analytics: ' . $e->getMessage();
 }
 
-// Sort newest first
 usort($allPosts, function($a, $b) {
     return $b['_sortTime'] <=> $a['_sortTime'];
 });
@@ -109,18 +129,33 @@ foreach ($allPosts as $p) {
     $stats['reach'] += $p['metrics']['views'];
 }
 
+$cachePayload = $allPosts;
+foreach ($cachePayload as &$cp) {
+    if (isset($cp['content']) && is_string($cp['content'])) {
+        $cp['content'] = mb_strimwidth($cp['content'], 0, 300, '...');
+    }
+}
+
 $response = [
     'ok' => true,
     'stats' => $stats,
-    'posts' => $allPosts
+    'posts' => $allPosts,
+    'cached_at' => time()
 ];
 
 if (!empty($errors)) {
     $response['warnings'] = $errors;
     $response['rate_limited_or_error'] = true;
 } else {
-    // Only save cache if no major errors occurred
-    set_setting('analytics_cache', json_encode($response));
+    try {
+        set_setting('analytics_cache', json_encode([
+            'ok' => true,
+            'stats' => $stats,
+            'posts' => $cachePayload,
+            'cached_at' => time()
+        ]));
+    } catch (Throwable $e) {
+    }
 }
 
 ob_end_clean();

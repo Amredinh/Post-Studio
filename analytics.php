@@ -2,14 +2,21 @@
 $page_title = 'Analytics';
 $active = 'analytics';
 require_once __DIR__ . '/includes/header.php';
+$trackedViews = (int)get_engagement_views();
 ?>
 
-<div class="flex items-center justify-between mb-6">
+<div class="flex items-center justify-between mb-6 gap-4">
   <div>
-    <h2 class="text-xl font-bold text-white tracking-tight">Performance Overview</h2>
-    <p class="text-sm text-slate-400">Track engagement and post statuses across all platforms.</p>
+    <h2 class="text-xl font-bold text-white tracking-tight flex items-center flex-wrap gap-3">
+      Performance Overview
+      <span id="analytics-freshness" class="hidden text-[11px] font-medium px-2 py-0.5 rounded-full bg-slate-800/80 border border-slate-700 text-slate-400"></span>
+      <?php if ($trackedViews > 0): ?>
+        <span class="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-300"><?= number_format($trackedViews) ?> tracked post view<?= $trackedViews === 1 ? '' : 's' ?></span>
+      <?php endif; ?>
+    </h2>
+    <p class="text-sm text-slate-400 mt-1">Track engagement and post statuses across all platforms.</p>
   </div>
-  <button id="btn-refresh-analytics" class="btn btn-primary inline-flex items-center gap-2">
+  <button id="btn-refresh-analytics" class="btn btn-primary inline-flex items-center gap-2 shrink-0">
     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0h15.356m-15.356-4h15.356m-15.356 4H5.582m0 0h15.356m-15.356-4h15.356M10.5 19.5L3 12l7.5-7.5M19.5 10.5l-7.5 7.5m0 0a3 3 0 11-4.243 4.243M15 15l4.243-4.243" /></svg>
     <span>Refresh Analytics</span>
   </button>
@@ -68,12 +75,46 @@ document.addEventListener('DOMContentLoaded', () => {
     const errorEl = document.getElementById('analytics-error');
     const kpiGrid = document.getElementById('kpi-grid');
     const tbody = document.getElementById('analytics-tbody');
+    const freshnessEl = document.getElementById('analytics-freshness');
 
     const escapeHTML = (str) => {
         if (!str) return '';
         return String(str).replace(/[&<>'"]/g, match => ({
             '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
         })[match]);
+    };
+
+    const fmt = (n) => Number(n || 0).toLocaleString();
+
+    const setNotice = (html, tone) => {
+        errorEl.innerHTML = html;
+        errorEl.classList.remove(
+            'text-rose-200', 'bg-rose-500/10', 'border-rose-500/30',
+            'text-amber-200', 'bg-amber-500/10', 'border-amber-500/30'
+        );
+        if (tone === 'amber') {
+            errorEl.classList.add('text-amber-200', 'bg-amber-500/10', 'border-amber-500/30');
+        } else {
+            errorEl.classList.add('text-rose-200', 'bg-rose-500/10', 'border-rose-500/30');
+        }
+        errorEl.classList.remove('hidden');
+    };
+
+    const showError = (msg) => {
+        loading.classList.add('hidden');
+        content.classList.add('hidden');
+        empty.classList.add('hidden');
+        setNotice('<strong>Error:</strong> ' + escapeHTML(msg), 'rose');
+    };
+
+    const showFreshness = (cachedAt) => {
+        if (!cachedAt) {
+            freshnessEl.classList.add('hidden');
+            return;
+        }
+        const mins = Math.max(0, Math.round((Date.now() / 1000 - Number(cachedAt)) / 60));
+        freshnessEl.textContent = mins <= 0 ? 'Updated just now' : 'Updated ' + mins + ' min ago';
+        freshnessEl.classList.remove('hidden');
     };
 
     const loadAnalytics = async (forceAPI = false) => {
@@ -84,43 +125,49 @@ document.addEventListener('DOMContentLoaded', () => {
         content.classList.add('hidden');
         empty.classList.add('hidden');
         errorEl.classList.add('hidden');
-        errorEl.classList.remove('text-amber-200', 'bg-amber-500/10', 'border-amber-500/30');
-        errorEl.classList.add('text-rose-200', 'bg-rose-500/10', 'border-rose-500/30');
         loading.classList.remove('hidden');
 
         try {
             const url = 'ajax/refresh_analytics.php' + (forceAPI ? '?force=1' : '');
             const res = await fetch(url);
-            const data = await res.json();
-            
+
+            let data;
+            try {
+                data = await res.json();
+            } catch (parseErr) {
+                throw new Error(res.status === 401
+                    ? 'Session expired — please log in again.'
+                    : 'Unexpected server response. Please try again.');
+            }
+
             if (!res.ok || !data.ok) {
                 throw new Error(data.error || 'Failed to load analytics');
             }
 
             loading.classList.add('hidden');
-            
-            if (data.rate_limited_or_error || (data.warnings && data.warnings.length > 0)) {
-                errorEl.innerHTML = '<strong>Heads Up:</strong> Some platforms could not be refreshed right now (likely rate limited). Displaying the most recent available analytics.';
-                errorEl.classList.remove('text-rose-200', 'bg-rose-500/10', 'border-rose-500/30');
-                errorEl.classList.add('text-amber-200', 'bg-amber-500/10', 'border-amber-500/30');
-                errorEl.classList.remove('hidden');
-            } else if (data.cached) {
-                // Just optionally highlight it's cached data, but maybe leave it out to not spam the user
+            showFreshness(data.cached_at);
+
+            if (data.throttled) {
+                setNotice('Refreshed moments ago — showing recent data to conserve your API quota.', 'amber');
+            } else if (data.warnings && data.warnings.length > 0) {
+                setNotice('<strong>Heads Up:</strong> Some sources could not be refreshed:<br>&bull; ' +
+                    data.warnings.map(escapeHTML).join('<br>&bull; '), 'amber');
             }
-            
+
             if (!data.posts || data.posts.length === 0) {
-                empty.classList.remove('hidden');
                 empty.querySelector('h3').textContent = 'No Posts Found';
                 empty.querySelector('p').textContent = 'Make sure you have created posts to see analytics data.';
+                empty.classList.remove('hidden');
                 return;
             }
 
-            // Render KPIs
+            empty.classList.add('hidden');
+
             const kpis = [
-                { label: 'Total Posts', value: data.stats.total, color: 'text-violet-400', bg: 'bg-violet-500/10' },
-                { label: 'Published', value: data.stats.published, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-                { label: 'Failed', value: data.stats.failed, color: 'text-rose-400', bg: 'bg-rose-500/10' },
-                { label: 'Total Reach', value: data.stats.reach, color: 'text-sky-400', bg: 'bg-sky-500/10' }
+                { label: 'Total Posts', value: fmt(data.stats.total), color: 'text-violet-400', bg: 'bg-violet-500/10' },
+                { label: 'Published', value: fmt(data.stats.published), color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+                { label: 'Failed', value: fmt(data.stats.failed), color: 'text-rose-400', bg: 'bg-rose-500/10' },
+                { label: 'Total Reach', value: fmt(data.stats.reach), color: 'text-sky-400', bg: 'bg-sky-500/10' }
             ];
 
             kpiGrid.innerHTML = kpis.map(kpi => `
@@ -134,14 +181,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `).join('');
 
-            // Render Table
             tbody.innerHTML = data.posts.map(p => {
-                const serviceTag = p.service === 'bulkpublish' 
-                    ? '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/25">BP</span>' 
+                const serviceTag = p.service === 'bulkpublish'
+                    ? '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/25">BP</span>'
                     : '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/25">ZN</span>';
-                
+
                 const statusDot = p.status === 'published' ? 'bg-emerald-400' : (p.status === 'failed' ? 'bg-rose-400' : 'bg-amber-400');
-                
+
                 return `
                 <tr class="hover:bg-slate-800/30 transition-colors">
                     <td class="px-6 py-4 whitespace-nowrap">
@@ -153,7 +199,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
                         <div class="flex flex-wrap gap-1">
-                            ${p.platforms.map(pl => `<span class="inline-flex items-center text-[10px] px-2 py-0.5 rounded border border-slate-700 text-slate-300 bg-slate-800/50 uppercase font-semibold">${escapeHTML(pl.platform)}</span>`).join('')}
+                            ${(p.platforms || []).map(pl => `<span class="inline-flex items-center text-[10px] px-2 py-0.5 rounded border border-slate-700 text-slate-300 bg-slate-800/50 uppercase font-semibold">${escapeHTML(pl.platform)}</span>`).join('')}
                         </div>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
@@ -162,9 +208,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             <span class="text-slate-200 capitalize">${escapeHTML(p.status)}</span>
                         </span>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300 font-medium">${p.metrics.likes}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300 font-medium">${p.metrics.comments}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300 font-medium">${p.metrics.views}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300 font-medium">${fmt(p.metrics.likes)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300 font-medium">${fmt(p.metrics.comments)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300 font-medium">${fmt(p.metrics.views)}</td>
                 </tr>
                 `;
             }).join('');
@@ -172,10 +218,7 @@ document.addEventListener('DOMContentLoaded', () => {
             content.classList.remove('hidden');
 
         } catch (err) {
-            loading.classList.add('hidden');
-            errorEl.textContent = err.message;
-            errorEl.classList.remove('hidden');
-            empty.classList.remove('hidden');
+            showError(err.message);
         } finally {
             btnRefresh.disabled = false;
             btnRefresh.querySelector('span').textContent = 'Refresh Analytics';
@@ -185,7 +228,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     btnRefresh.addEventListener('click', () => loadAnalytics(true));
 
-    // Auto-trigger cached load on page load
     loadAnalytics(false);
 });
 </script>
