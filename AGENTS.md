@@ -49,7 +49,8 @@ Tech constraints decided with the client:
 
 ## 3. Database credentials (production)
 
-From `config.php`:
+From `config.php` (real values live only on the server; the repo ships
+`config.example.php` with placeholders):
 
 | Setting | Value |
 |---|---|
@@ -135,10 +136,11 @@ legacy rows before swapping the old plain index for the unique one, so re-import
 
 ```
 poster/
-├── config.php                 DB creds, ZERNIO_BASE_URL, BULKPUBLISH_BASE_URL, APP_NAME, APP_SECRET, SESSION_NAME, APP_DEBUG (PLACEHOLDER values in repo — fill real ones on server)
+├── config.php                 DB creds, ZERNIO_BASE_URL, BULKPUBLISH_BASE_URL, BUFFER_BASE_URL, APP_NAME, APP_SECRET, SESSION_NAME, APP_DEBUG (NOT tracked by git — real values live only on the server)
+├── config.example.php         tracked template; copy to config.php and fill in
 ├── install.sql                schema (see Section 4)
 ├── .htaccess                  (provided for cPanel)
-├── .gitignore                 excludes note.md and OS junk (config.php is committed WITH placeholders)
+├── .gitignore                 excludes note.md, config.php and OS junk (real config never enters git)
 ├── AGENTS.md                  this guide
 ├── README.md                  GitHub-facing overview + setup
 ├── login.php                  login + first-run admin setup
@@ -462,6 +464,9 @@ channel list grouped by platform with ZN/BP badges and copy-ID checkboxes.
 
 ## 9. Config details (`config.php`)
 
+`config.php` is **not tracked by git** — the repo ships `config.example.php` instead. On a
+fresh deployment: copy the example to `config.php`, then fill in real values:
+
 ```php
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'your_database_name');
@@ -469,11 +474,15 @@ define('DB_USER', 'your_database_user');
 define('DB_PASS', 'your_database_password');
 define('ZERNIO_BASE_URL', 'https://zernio.com/api/v1');
 define('BULKPUBLISH_BASE_URL', 'https://app.bulkpublish.com');
+define('BUFFER_BASE_URL', 'https://api.bufferapp.com/1');
 define('APP_NAME', 'Post Studio');
 define('APP_SECRET', 'CHANGE_THIS_TO_A_LONG_RANDOM_STRING'); // used for sessions
 define('SESSION_NAME', 'poststudio_session');
 define('APP_DEBUG', true); // set false in production
 ```
+
+Because the file is untracked, cPanel "Update from Remote" (git pull) can never conflict
+with or overwrite the live credentials on the server.
 
 ---
 
@@ -534,6 +543,14 @@ Everything below was verified during development:
   and detail cards per platform covering post formats, free-plan limits (character caps, media
   specs), composer options, and usage tips; plus a "how multi-service posting works" summary.
 - All 19 PHP files lint clean (portable PHP); app.js passes `node --check`.
+
+**config.php untracked (latest round):**
+- cPanel "Update from Remote" failed with the XID merge error: the live server
+  `config.php` (real credentials) conflicted with the tracked placeholder version.
+- Fix: `config.php` removed from git tracking and added to `.gitignore`;
+  new `config.example.php` template ships in the repo. AGENTS.md Sections 3/9/13 and
+  README.md updated for the copy-example flow, including one-time server upgrade steps
+  (`git stash` → pull → restore config).
 
 **New Enhancements (post-fix):**
 - `ajax/create_post.php` — success message now properly displays per-service results; errors are surfaced in the UI safely for mixed submissions.
@@ -616,9 +633,9 @@ code. Instead use one of:
 
 ## 13. Deployment checklist (cPanel)
 
-1. Create the database + user in cPanel MySQL. Then fill the real values into
-   `config.php` (Section 3 / Section 9) — the repo copy ships with placeholder values
-   that must be replaced before the site will connect.
+1. Create the database + user in cPanel MySQL. Copy `config.example.php` to `config.php`
+   and fill in the real values (Section 3 / Section 9). `config.php` is git-ignored, so
+   the credentials stay on the server and never conflict with future pulls.
 2. Upload the files (Section 12 — prefer File Manager folder upload over a zip).
 3. Import `install.sql` in phpMyAdmin.
 4. Set `APP_DEBUG` to `false` in `config.php`, and change `APP_SECRET` to a long random
@@ -629,6 +646,14 @@ code. Instead use one of:
 7. Open **Compose Post** — channels from all connected services should appear with
    ZN/BP/BF badges.
 8. Optional: test bulk CSV on the **Bulk Publish** page with "Validate only" first.
+
+**Existing deployments upgrading from a tracked `config.php`** (the XID merge error):
+1. Back up the live server `config.php` (File Manager copy).
+2. In the repo: this commit removes `config.php` from tracking and adds
+   `config.example.php`. Push it, then on the server run `git stash` (cPanel Terminal or
+   SSH) before clicking **Update from Remote**.
+3. After the pull succeeds, restore the backed-up `config.php` into the site root.
+4. Future updates no longer touch the file — no more conflicts.
 
 ---
 
