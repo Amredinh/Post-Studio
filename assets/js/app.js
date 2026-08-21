@@ -607,6 +607,14 @@
         if (label) label.textContent = 'Submitting \u2026';
         try {
           const data = await api('ajax/create_post.php', { method: 'POST', body: payload });
+          if (!data.ok) {
+            const errMsg = data.errors && data.errors.length > 0
+              ? data.errors.join(' | ')
+              : (data.error || 'Post creation failed');
+            toast(errMsg, 'error');
+            if (btn) { btn.disabled = false; if (label) label.textContent = 'Submit post'; }
+            return;
+          }
           const posts = data.posts || [];
           const names = posts.map(function (p) {
             const id = p.service === 'bulkpublish' ? (p.post && p.post.id) : (p.post && p.post._id);

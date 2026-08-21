@@ -35,3 +35,11 @@ CREATE TABLE IF NOT EXISTS posts (
 -- Migration for databases created with the older schema (adds the service column).
 ALTER TABLE posts ADD COLUMN IF NOT EXISTS service VARCHAR(20) NOT NULL DEFAULT 'zernio' AFTER zernio_post_id;
 ALTER TABLE posts ADD INDEX IF NOT EXISTS idx_service (service);
+
+CREATE TABLE IF NOT EXISTS posts_engagement (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  service VARCHAR(20) NOT NULL DEFAULT 'zernio',
+  post_id VARCHAR(64) NOT NULL,
+  viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_service_post (service, post_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

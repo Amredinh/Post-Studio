@@ -7,6 +7,7 @@ require_once __DIR__ . '/includes/bulkpublish.php';
 
 $zernioKey = (string)get_setting('zernio_api_key', '');
 $bpKey = (string)get_setting('bulkpublish_api_key', '');
+$telegramKey = (string)get_setting('telegram_bot_token', '');
 $message = '';
 $messageType = '';
 
@@ -43,6 +44,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         set_setting('bulkpublish_api_key', '');
         $bpKey = '';
         $message = 'BulkPublish API key removed.';
+        $messageType = 'success';
+    } elseif ($_POST['action'] === 'save_telegram_key') {
+        $newKey = trim($_POST['bot_token'] ?? '');
+        if ($newKey === '') {
+            $message = 'Telegram bot token cannot be empty.';
+            $messageType = 'error';
+        } else {
+            set_setting('telegram_bot_token', $newKey);
+            $telegramKey = $newKey;
+            $message = 'Telegram bot token saved.';
+            $messageType = 'success';
+        }
+    } elseif ($_POST['action'] === 'clear_telegram_key') {
+        set_setting('telegram_bot_token', '');
+        $telegramKey = '';
+        $message = 'Telegram bot token removed.';
         $messageType = 'success';
     }
 }
@@ -189,6 +206,59 @@ if ($bpKey !== '') {
         <?php endif; ?>
       </div>
     <?php endif; ?>
+  </div>
+
+  <!-- Telegram Bot -->
+  <div class="card card-pad">
+    <h2 class="text-base font-semibold mb-3">Telegram Bot</h2>
+    <p class="text-sm text-slate-500 mb-4">
+      Connect a Telegram bot to enable posting and tracking from Telegram.
+      Get your bot token from <a href="https://t.me/BotFather" target="_blank" rel="noopener" class="text-violet-400 hover:text-violet-300">@BotFather</a>.
+    </p>
+
+    <form method="post" class="space-y-4">
+      <input type="hidden" name="csrf" value="<?= csrf_token() ?>">
+      <input type="hidden" name="action" value="save_telegram_key">
+      <div>
+        <label class="label">Bot Token <?= $telegramKey ? '<span class="text-emerald-400 normal-case">(saved)</span>' : '' ?></label>
+        <input type="password" name="bot_token" class="input font-mono" placeholder="123456789:ABCdefGhIklMNOpQRSTUvwxYZ" value="">
+        <p class="text-xs text-slate-600 mt-2">
+          <?= $telegramKey ? 'A token is currently saved (hidden). Paste a new one to replace it, or leave blank and use Remove.' : 'No token saved yet.' ?>
+        </p>
+      </div>
+      <div class="flex gap-3">
+        <button type="submit" class="btn btn-primary">Save token</button>
+        <?php if ($telegramKey): ?>
+          <button type="submit" name="action" value="clear_telegram_key" class="btn btn-ghost" onclick="return confirm('Remove the saved Telegram bot token?')">Remove</button>
+        <?php endif; ?>
+      </form>
+
+      <?php if ($telegramKey): ?>
+        <div class="mt-4">
+          <?php
+          try {
+            $tg = new Telegram($telegramKey);
+            $webhook = $tg->getWebhookInfo();
+            $testBot = $tg->getUpdates(0, 1, 0);
+            $testOk = !empty($testBot);
+            ?>
+            <div class="flex items-center gap-3 p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/25">
+              <span class="w-3 h-3 rounded-full bg-emerald-400"></span>
+              <div class="text-sm">
+                <strong class="text-emerald-300">Bot connected</strong>
+                <span class="text-slate-400">Bot token is valid</span>
+              </div>
+            </div>
+            <?php if ($webhook['url']): ?>
+              <p class="text-xs text-slate-500 mt-1">Webhook URL: <?= htmlspecialchars($webhook['url']) ?></p>
+            <?php endif; ?>
+          <?php } catch (Throwable $e): ?>
+            <div class="px-4 py-3 rounded-xl text-sm text-rose-200 bg-rose-500/10 border border-rose-500/30">
+              <strong>Connection failed:</strong> <?= htmlspecialchars($e->getMessage()) ?>
+            </div>
+          <?php endif; ?>
+        </div>
+      <?php endif; ?>
   </div>
 
   <div class="card card-pad">

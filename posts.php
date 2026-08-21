@@ -209,11 +209,15 @@ function platforms_chips(array $p): string {
     <label class="label">To</label>
     <input type="date" name="dateTo" class="input" value="<?= htmlspecialchars($filters['dateTo']) ?>">
   </div>
-  <div class="sm:col-span-2 lg:col-span-5 flex gap-2">
+<div class="sm:col-span-2 lg:col-span-5 flex gap-2">
     <button type="submit" class="btn btn-primary btn-sm">Filter</button>
     <a href="posts.php" class="btn btn-ghost btn-sm">Reset</a>
     <a href="composer.php" class="btn btn-primary btn-sm ml-auto">+ New post</a>
-  </div>
+    <button type="button" id="btn-refresh-posts" class="btn btn-ghost btn-sm ml-2" title="Refresh posts">
+      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0h15.356m-15.356-4h15.356m-15.356 4H5.582m0 0h15.356m-15.356-4h15.356M10.5 19.5L3 12l7.5-7.5M19.5 10.5l-7.5 7.5m0 0a3 3 0 11-4.243 4.243M15 15l4.243-4.243" /></svg>
+      Refresh
+    </button>
+</div>
 </form>
 
 <?php if ($error): ?>
@@ -271,4 +275,51 @@ function platforms_chips(array $p): string {
 <?php endif; ?>
 
 <?php endif; ?>
+<script>
+document.getElementById('btn-refresh-posts')?.addEventListener('click', async function() {
+  const el = this;
+  el.disabled = true;
+  el.querySelector('span')?.setAttribute('textContent', 'Refreshing...');
+  try {
+    const res = await fetch('ajax/refresh_posts.php?' + new URLSearchParams({ page: 1, limit: 20 }), {
+      method: 'GET',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    });
+    const data = await res.json();
+    if (data.ok) {
+      // Update the table rows - we'll replace the tbody
+      const tbody = document.querySelector('#posts-table tbody');
+      if (tbody) {
+        let html = '';
+        data.posts.forEach(function(p, i) {
+          const svcTag = p.service === 'bulkpublish'
+            ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/25">BP</span>'
+            : '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/25">ZN</span>';
+          html += '<tr>';
+          html += '<td class="max-w-xs"><div class="flex items-center gap-2"><span class="text-slate-500">' + svcTag + '</span><div class="truncate">' + (p.content || '') + '</div></div><div class="text-[11px] text-slate-600 font-mono">' + p._id + '</div></td>';
+          html += '<td>' + (p.status ? '<span class="text-sm ' + (p.status === 'published' ? 'text-emerald-400' : '') + '">' + p.status + '</span>' : '—') + '</td>';
+          html += '<td>' + (p.platforms && p.platforms.length ? p.platforms.map(function(pl) {
+            const meta = platform_meta(pl.platform);
+            return '<span class="inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-full border border-slate-700 text-slate-300"><span class="w-1.5 h-1.5 rounded-full ' + (pl.status === 'published' ? 'bg-emerald-400' : '') + '"></span>' + pl.platform + '</span>';
+          }).join(' ') : '') + '</td>';
+          html += '<td class="text-sm text-slate-400 whitespace-nowrap">' + (!p.scheduledFor ? '—' : date('Y-m-d H:i', strtotime(p.scheduledFor))) + '</td>';
+          html += '<td class="text-right"><a href="post_view.php?id=' + p._id + '&service=' + p.service + '" class="btn btn-ghost btn-sm">View</a></td>';
+          html += '</tr>';
+        });
+        tbody.innerHTML = html;
+      }
+      // Update pagination info
+      const paginationInfo = document.querySelector('.text-sm.text-slate-400');
+      if (paginationInfo) {
+        paginationInfo.textContent = 'Page 1 of ' + data.totalPages + ' • ' + data.total + ' total';
+      }
+    }
+  } catch (e) {
+    toast('Failed to refresh: ' + e.message, 'error');
+  } finally {
+    el.disabled = false;
+    el.querySelector('span')?.removeAttribute('textContent');
+  }
+});
+</script>
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

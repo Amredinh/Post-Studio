@@ -8,9 +8,10 @@ require_login();
 
 $page_title = $page_title ?? APP_NAME;
 $active     = $active ?? '';
-$apiKeySet  = (bool)get_setting('zernio_api_key', '') || (bool)get_setting('bulkpublish_api_key', '');
+$apiKeySet  = (bool)get_setting('zernio_api_key', '') || (bool)get_setting('bulkpublish_api_key', '') || (bool)get_setting('telegram_bot_token', '');
 $znKeySet   = (bool)get_setting('zernio_api_key', '');
 $bpKeySet   = (bool)get_setting('bulkpublish_api_key', '');
+$tgKeySet   = (bool)get_setting('telegram_bot_token', '');
 
 $nav = [
     'dashboard' => ['Dashboard', 'index.php', 'M1.5 2.25h-3A2.25 2.25 0 0 0 5.25 4.5v15a.75.75 0 0 1-.75.75h-2.25m3 0h9.75a2.25 2.25 0 0 0 2.25-2.25V4.5A2.25 2.25 0 0 0 15 2.25h-3'],
@@ -88,6 +89,11 @@ $nav = [
           <?php if ($bpKeySet): ?>
             <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-fuchsia-500/10 text-fuchsia-300 border border-fuchsia-500/25">
               <span class="w-2 h-2 rounded-full bg-fuchsia-400"></span> BulkPublish
+            </span>
+          <?php endif; ?>
+          <?php if ($tgKeySet): ?>
+            <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/25">
+              <span class="w-2 h-2 rounded-full bg-emerald-400"></span> Telegram
             </span>
           <?php endif; ?>
         </span>

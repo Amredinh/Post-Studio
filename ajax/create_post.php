@@ -95,13 +95,23 @@ if ($bpEntries) {
     }
 }
 
+$response = ['ok' => true, 'posts' => $results];
+
+// Build a combined error message if there are any errors
+if ($errors) {
+    $response['errors'] = $errors;
+}
+
+// If no posts were successfully created, mark as failed
 if (!$results) {
+    $response['ok'] = false;
+    $response['error'] = implode(' | ', $errors);
     http_response_code(400);
-    echo json_encode(['ok' => false, 'error' => implode(' | ', $errors)]);
+    echo json_encode($response);
     exit;
 }
 
-echo json_encode(['ok' => true, 'posts' => $results, 'errors' => $errors]);
+echo json_encode($response);
 
 /**
  * Build a BulkPublish create-post payload from the unified composer payload.

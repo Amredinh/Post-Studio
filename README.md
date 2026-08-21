@@ -14,6 +14,8 @@ The composer lists all connected channels from **both services**, you tick which
 - Merged post list and detail view across both services (retry / unpublish / publish-now)
 - Bulk CSV scheduling with a downloadable template
 - Dark, modern dashboard UI (Tailwind CSS via CDN — no build step)
+- **Analytics/engagement tracking** with dedicated refresh button to save API calls
+- **Telegram bot integration** — post from Telegram, check status, get help
 
 ## Tech stack
 
@@ -29,6 +31,7 @@ The composer lists all connected channels from **both services**, you tick which
 - PHP 7.4+ with `curl`, `pdo_mysql`, `mbstring`
 - MySQL/MariaDB database
 - API keys: Zernio (`sk_...`) and/or BulkPublish (`bp_...`)
+- Telegram bot token (optional, for Telegram integration)
 
 ### Setup
 
@@ -37,7 +40,9 @@ The composer lists all connected channels from **both services**, you tick which
 3. Import `install.sql` in phpMyAdmin (creates `users`, `settings`, `posts`).
 4. Open the site → `login.php` creates your admin account on first run.
 5. Go to **Settings** → paste your Zernio and/or BulkPublish API keys → confirm the green "connected" badges.
-6. Open **Compose Post** — channels from both services appear with ZN/BP badges.
+6. (Optional) Enter your Telegram bot token in Settings → use /help, /post, /status commands.
+7. Open **Compose Post** — channels from both services appear with ZN/BP badges.
+8. Open **Posts** — use the "Refresh" button to reload data without full page load, view engagement stats.
 
 ### Deployment to cPanel
 
@@ -45,7 +50,7 @@ The composer lists all connected channels from **both services**, you tick which
 
 ## Documentation
 
-See [`AGENTS.md`](AGENTS.md) for a full self-contained developer guide: database schema, both API client docs, payload shapes, data flow, testing instructions, and the deployment checklist.
+See [`AGENTS.md`](AGENTS.md) for a full self-contained developer guide: database schema, both API client docs, payload shapes, data flow, testing instructions, and the deployment checklist. Also see `gitnote.md` for git workflow notes.
 
 ## License
 

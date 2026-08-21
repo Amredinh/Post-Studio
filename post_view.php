@@ -101,6 +101,13 @@ function normalize_bp_view(array $post): array {
   <div class="card card-pad text-sm text-slate-400">Post not found.</div>
 <?php else: ?>
 
+<?php
+// Increment engagement view counter (non-fatal)
+if ($view['service'] && $view['_id']) {
+    increment_engagement($view['service'], $view['_id']);
+}
+?>
+
 <a href="posts.php" class="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-violet-300 mb-4">
   <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
   Back to posts

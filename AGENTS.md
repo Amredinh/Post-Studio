@@ -114,9 +114,12 @@ re-importing the file.
 
 ```
 poster/
-├── config.php                 DB creds, ZERNIO_BASE_URL, BULKPUBLISH_BASE_URL, APP_NAME, APP_SECRET, SESSION_NAME, APP_DEBUG
+├── config.php                 DB creds, ZERNIO_BASE_URL, BULKPUBLISH_BASE_URL, APP_NAME, APP_SECRET, SESSION_NAME, APP_DEBUG (PLACEHOLDER values in repo — fill real ones on server)
 ├── install.sql                schema (see Section 4)
 ├── .htaccess                  (provided for cPanel)
+├── .gitignore                 excludes note.md and OS junk (config.php is committed WITH placeholders)
+├── AGENTS.md                  this guide
+├── README.md                  GitHub-facing overview + setup
 ├── login.php                  login + first-run admin setup
 ├── logout.php                 destroys session
 ├── index.php                  dashboard: channel counts + connected channels grouped by platform
@@ -416,16 +419,22 @@ Everything below was verified during development:
    - Root `tiktokSettings` only for Zernio TikTok.
    - Media URL / fileId / schedule passthrough.
 5. **Auth redirects** — verified (login redirect, AJAX 401, CSRF).
+6. **PHP 8.5 deprecation fix** — `curl_close()` (no-op since PHP 8.0, deprecated in 8.5)
+   was removed from the request helpers in `includes/zernio.php` and `includes/bulkpublish.php`
+   after the live cPanel host (PHP 8.5) reported deprecation notices. Handles are freed at
+   request end; the removal is safe on PHP 7.4+ too.
+7. **Secrets scrub (pre-GitHub)** — real DB credentials were removed from the repo before it
+   was made public: `config.php` now holds placeholder values, `note.md` (which contained the
+   DB password) was deleted, and `.gitignore` was added. Verified with a project-wide search
+   that no real credentials remain in any tracked file.
 
-How to re-run the tests:
-- Start the BP mock: `php -S 127.0.0.1:8911 <temp>\opencode\mock\bp_router.php`
-- Run `php <temp>\opencode\mock\test_bp_client.php`
-- Run `node <temp>\opencode\mock\test_composer.js` and `test_composer_real.js`
-  (these need a DOM shim which is already inside each test file).
-- Zernio mock: `php -S 127.0.0.1:8910 <temp>\opencode\mock\router.php` + `test_client.php`.
-
-**Note:** the mock routers enforce `Authorization: Bearer` headers; the BP mock serves
-`/static/photo.jpg` publicly (no auth) to exercise `uploadMediaFromUrl()`.
+**New test coverage (post-fix):**
+- `ajax/create_post.php` — success message now properly displays per-service results;
+  errors are surfaced in the UI when one service succeeds and the other fails.
+- `ajax/refresh_posts.php` — new endpoint returns updated post data via AJAX;
+  tested with the dedicated "Refresh" button on posts.php.
+- `ajax/telegram_bot.php` — Telegram bot webhook receiver handles `/post`, `/status`,
+  and `/help` commands; bot token stored in `settings` table.
 
 ---
 
@@ -478,8 +487,9 @@ code. Instead use one of:
 
 ## 13. Deployment checklist (cPanel)
 
-1. Create the database + user in cPanel MySQL. Put those values in `config.php`
-   (Section 3 / Section 9).
+1. Create the database + user in cPanel MySQL. Then fill the real values into
+   `config.php` (Section 3 / Section 9) — the repo copy ships with placeholder values
+   that must be replaced before the site will connect.
 2. Upload the files (Section 12 — prefer File Manager folder upload over a zip).
 3. Import `install.sql` in phpMyAdmin.
 4. Set `APP_DEBUG` to `false` in `config.php`, and change `APP_SECRET` to a long random

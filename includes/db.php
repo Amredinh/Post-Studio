@@ -37,3 +37,27 @@ function set_setting(string $key, ?string $value): void {
     );
     $stmt->execute([$key, $value]);
 }
+
+/** Increment engagement view count for a post. */
+function increment_engagement(string $service, string $postId): void {
+    try {
+        $stmt = db()->prepare(
+            'INSERT INTO posts_engagement (service, post_id, viewed_at) VALUES (?, ?, NOW())
+             ON DUPLICATE KEY viewed_at = VALUES(viewed_at)'
+        );
+        $stmt->execute([$service, $postId]);
+    } catch (Throwable $e) {
+        // Non-fatal.
+    }
+}
+
+/** Get total engagement views. */
+function get_engagement_views(): int {
+    try {
+        $stmt = db()->prepare('SELECT COUNT(*) AS cnt FROM posts_engagement');
+        $row = $stmt->fetch();
+        return (int)($row['cnt'] ?? 0);
+    } catch (Throwable $e) {
+        return 0;
+    }
+}
