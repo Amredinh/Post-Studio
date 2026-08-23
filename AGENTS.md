@@ -15,7 +15,7 @@ the same time**:
 
 - **Zernio** (`https://zernio.com/api/v1`) — auth via `Bearer sk_...` API key.
 - **BulkPublish** (`https://app.bulkpublish.com`) — auth via `Bearer bp_...` API key.
-- **Buffer** (`https://api.bufferapp.com/1`, classic v1) — auth via `Bearer <access token>`.
+- **Buffer** (`https://api.bufferapp.com/1`, classic v1) — auth via `access_token` param.
 
 The key feature: the composer lists **all connected channels from all services**, the user
 ticks which platforms to post to, picks media/upload position, and the app creates posts on
@@ -296,8 +296,9 @@ poster/
 
 - Base URL: `https://api.bufferapp.com/1` (constant `BUFFER_BASE_URL`). **Classic API v1**
   (`.json` endpoints) — not Buffer's newer v2.
-- Auth: `Authorization: Bearer <access token>`. Token from buffer.com → Settings (or the
-  developer portal).
+- Auth: the token is sent as an `access_token` parameter (query string on GET, form field on
+  POST). **Classic v1 does NOT support `Authorization: Bearer` headers** — they are silently
+  ignored and every call 401s. Token from buffer.com → Settings (or the developer portal).
 - **Requests are form-urlencoded** (`http_build_query`), not JSON — classic v1 requirement.
   Array params use `profile_ids[0]=...&profile_ids[1]=...`.
 - Client class `Buffer` methods:
@@ -613,6 +614,23 @@ Everything below was verified during development:
   - Dashboard page rebuilt: connection hero (getMe identity + webhook status/pending/last
     error), token save now verifies via getMe, pairing-code manager with paired-chat revoke,
     wizard explainer + command reference.
+
+**Telegram wizard loop fix + Buffer 401 fix (latest round):**
+- `ajax/telegram_bot.php` — ROOT CAUSE of the caption/media endless loop: in the `caption`
+  state, when only one of caption/media arrived, `$data` was modified in memory but
+  `tg_save_session()` was never called (only the both-set branch persisted). Every new
+  message reloaded a stale session, so the draft never accumulated and the bot kept asking
+  for "the other one" forever. Both single-item branches now persist the draft. Also added a
+  20 MB guard on incoming media (`file_size`) — Telegram bots can only download files up to
+  20 MB via `getFile`, so oversized video files are rejected immediately with a clear message
+  instead of failing later during publish. Videos sent as documents (files) were already
+  recognized via the `document` + `video/*` mime check.
+- `includes/buffer.php` — ROOT CAUSE of "Buffer request failed (HTTP 401)" in Settings: the
+  client sent `Authorization: Bearer <token>`, but classic API v1 ignores Bearer headers and
+  requires the token as an `access_token` parameter (query string on GET, form field on
+  POST). Auth switched to the param style; header removed. Section 6.3 docs updated.
+- **Known Telegram platform limit**: files > 20 MB cannot be published through the bot at all
+  (Bot API hard limit). Workaround: use the web composer, or self-host a Bot API server.
 
 ---
 

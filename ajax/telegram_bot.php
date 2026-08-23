@@ -897,20 +897,36 @@ try {
 
     // Extract incoming media, if any.
     $incomingMedia = null;
+    $incomingSize = 0;
     if (is_array($photo)) {
-        $incomingMedia = ['fid' => end($photo)['file_id'], 'type' => 'image', 'mime' => 'image/jpeg'];
+        $lastPhoto = end($photo);
+        $incomingMedia = ['fid' => (string)$lastPhoto['file_id'], 'type' => 'image', 'mime' => 'image/jpeg'];
+        $incomingSize = (int)($lastPhoto['file_size'] ?? 0);
     } elseif (is_array($video)) {
         $incomingMedia = ['fid' => (string)$video['file_id'], 'type' => 'video', 'mime' => (string)($video['mime_type'] ?? 'video/mp4')];
+        $incomingSize = (int)($video['file_size'] ?? 0);
     } elseif (is_array($document)) {
         $mime = (string)($document['mime_type'] ?? '');
         if (strpos($mime, 'image') === 0) {
             $incomingMedia = ['fid' => (string)$document['file_id'], 'type' => 'image', 'mime' => $mime];
+            $incomingSize = (int)($document['file_size'] ?? 0);
         } elseif (strpos($mime, 'video') === 0) {
             $incomingMedia = ['fid' => (string)$document['file_id'], 'type' => 'video', 'mime' => $mime];
+            $incomingSize = (int)($document['file_size'] ?? 0);
         } else {
             $telegram->sendMessage((string)$chatId, "⚠️ Unsupported file type. Send a photo or video.");
             finish_ok();
         }
+    }
+
+    // Bots can only download files up to 20 MB from Telegram's servers.
+    if ($incomingMedia && $incomingSize > 20 * 1024 * 1024) {
+        $mb = round($incomingSize / 1048576, 1);
+        $telegram->sendMessage((string)$chatId,
+            "⚠️ That file is <b>" . $mb . " MB</b>, but Telegram only lets bots download files up to <b>20 MB</b>.\n\n"
+            . "Send a smaller photo/video, or publish this one through the Post Studio web composer.",
+            'HTML');
+        finish_ok();
     }
 
     if ($state === 'caption') {
@@ -924,10 +940,12 @@ try {
             tg_save_session($chatId, 'channels', $data);
             $telegram->sendMessage((string)$chatId, "👍 Got it!\n\n" . view_channels_html($data), 'HTML', kb_channels($data['channels']));
         } elseif (isset($data['media'])) {
+            tg_save_session($chatId, 'caption', $data);
             $telegram->sendMessage((string)$chatId,
                 "🎬 Media received!\n\n" . caption_progress($data) . "\n\nNow type the <b>caption text</b> (or tap Skip).",
             'HTML', kb_caption(false, true));
         } elseif (isset($data['text'])) {
+            tg_save_session($chatId, 'caption', $data);
             $telegram->sendMessage((string)$chatId,
                 "✍️ Caption saved.\n\n" . caption_progress($data) . "\n\nOptionally send a <b>photo or video</b> now.",
             'HTML', kb_caption(true, false));
