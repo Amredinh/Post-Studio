@@ -1,3 +1,4 @@
+<?php
 ob_start();
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/zernio.php';
@@ -7,21 +8,45 @@ require_once __DIR__ . '/../includes/db.php';
 require_login_ajax();
 
 header('Content-Type: application/json');
+// Server-side media re-downloads (BulkPublish) can be slow on shared hosts.
+set_time_limit(300);
+
+$GLOBALS['__ps_json_sent'] = false;
+
+/** Emit a guaranteed-valid JSON response, wiping any buffered PHP output. */
+function send_json(array $data, int $status = 200): void {
+    while (ob_get_level() > 0) {
+        @ob_end_clean();
+    }
+    http_response_code($status);
+    $flags = defined('JSON_INVALID_UTF8_SUBSTITUTE') ? JSON_INVALID_UTF8_SUBSTITUTE : 0;
+    $json = json_encode($data, $flags);
+    if ($json === false) {
+        $json = '{"ok":false,"error":"Response encoding failed"}';
+    }
+    $GLOBALS['__ps_json_sent'] = true;
+    echo $json;
+    exit;
+}
+
+/* Safety net: if a fatal error still kills the request, answer with JSON. */
+register_shutdown_function(function () {
+    if (!empty($GLOBALS['__ps_json_sent'])) return;
+    $e = error_get_last();
+    if ($e && in_array($e['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+        send_json(['ok' => false, 'error' => 'Server error: ' . $e['message']], 500);
+    }
+});
 
 $raw = file_get_contents('php://input');
 $payload = json_decode($raw, true);
 if (!is_array($payload)) {
-    ob_end_clean();
-    http_response_code(400);
-    echo json_encode(['ok' => false, 'error' => 'Invalid JSON body']);
-    exit;
+    send_json(['ok' => false, 'error' => 'Invalid JSON body'], 400);
 }
 
 $platforms = $payload['platforms'] ?? [];
 if (!is_array($platforms) || count($platforms) === 0) {
-    http_response_code(400);
-    echo json_encode(['ok' => false, 'error' => 'Select at least one channel.']);
-    exit;
+    send_json(['ok' => false, 'error' => 'Select at least one channel.'], 400);
 }
 
 // Split channels by service.
@@ -129,14 +154,10 @@ if ($errors) {
 if (!$results) {
     $response['ok'] = false;
     $response['error'] = implode(' | ', $errors);
-    ob_end_clean();
-    http_response_code(400);
-    echo json_encode($response);
-    exit;
+    send_json($response, 400);
 }
 
-ob_end_clean();
-echo json_encode($response);
+send_json($response);
 
 /**
  * Build a BulkPublish create-post payload from the unified composer payload.

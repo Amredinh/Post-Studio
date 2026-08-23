@@ -8,6 +8,8 @@
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/db.php';
 
+defined('BULKPUBLISH_BASE_URL') || define('BULKPUBLISH_BASE_URL', 'https://app.bulkpublish.com');
+
 class BulkPublishException extends Exception {
     public $status;
     public $payload;

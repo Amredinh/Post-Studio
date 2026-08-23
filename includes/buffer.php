@@ -8,6 +8,9 @@
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/db.php';
 
+/* Fallbacks for configs created before the Buffer integration. */
+defined('BUFFER_BASE_URL') || define('BUFFER_BASE_URL', 'https://api.bufferapp.com/1');
+
 class BufferException extends Exception {
     public $status;
     public $payload;

@@ -6,6 +6,8 @@
 
 require_once __DIR__ . '/../config.php';
 
+defined('ZERNIO_BASE_URL') || define('ZERNIO_BASE_URL', 'https://zernio.com/api/v1');
+
 class ZernioException extends Exception {
     public $status;
     public $payload;

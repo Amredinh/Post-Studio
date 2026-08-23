@@ -47,7 +47,8 @@
       throw new Error((data && data.error) || (data && data.message) || 'Request failed (HTTP ' + res.status + ')');
     }
     if (!data) {
-      throw new Error('Invalid JSON response from server');
+      const snippet = rawText.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 180);
+      throw new Error('Invalid JSON from ' + url + ' (HTTP ' + res.status + ')' + (snippet ? ': ' + snippet : ' (empty response)'));
     }
     return data;
   }
