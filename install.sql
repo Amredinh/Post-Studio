@@ -54,3 +54,11 @@ JOIN posts_engagement e2
   ON e1.service = e2.service AND e1.post_id = e2.post_id AND e1.id > e2.id;
 ALTER TABLE posts_engagement DROP INDEX IF EXISTS idx_service_post;
 ALTER TABLE posts_engagement ADD UNIQUE INDEX IF NOT EXISTS uk_service_post (service, post_id);
+
+-- Telegram bot wizard sessions (one draft per chat).
+CREATE TABLE IF NOT EXISTS telegram_sessions (
+  chat_id BIGINT PRIMARY KEY,
+  state VARCHAR(30) NOT NULL DEFAULT 'idle',
+  data MEDIUMTEXT,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

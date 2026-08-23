@@ -582,6 +582,38 @@ Everything below was verified during development:
   upsert actually dedupes (guarded `DROP INDEX IF EXISTS` + `ADD UNIQUE INDEX IF NOT EXISTS`,
   MariaDB syntax per MDEV-4437 fix in 10.0.6).
 
+**Composer JSON fix + Telegram bot redesign (latest round):**
+- `ajax/create_post.php` — ROOT CAUSE of "Invalid JSON response from server" on submit: the
+  file was missing its `<?php` opening tag, so the server served raw source text (HTTP 200 +
+  PHP code = unparseable JSON). Fixed; also added `send_json()` helper (cleans ALL output
+  buffers, `JSON_INVALID_UTF8_SUBSTITUTE` encoding so odd captions can never produce an empty
+  body), a `register_shutdown_function` fatal-handler that still answers JSON 500, and
+  `set_time_limit(300)` for slow BP media re-downloads.
+- `assets/js/app.js` — `api()` now surfaces endpoint + HTTP status + first ~180 chars of the
+  raw body when a response cannot be parsed as JSON.
+- `includes/zernio.php` / `bulkpublish.php` / `buffer.php` — `defined() || define()`
+  fallbacks for the BASE_URL constants so an outdated live `config.php` (e.g. one created
+  before Buffer integration, missing `BUFFER_BASE_URL`) can no longer fatal on PHP 8+.
+- **Telegram bot fully redesigned** (`includes/telegram.php`, `ajax/telegram_bot.php`,
+  `telegram.php`, `install.sql`):
+  - Private-bot security: chats must pair via `/pair <code>` using a 15-minute code generated
+    on the dashboard (`telegram_allowed_chats` setting). Previously ANYONE who found the bot
+    could publish to all connected accounts.
+  - Conversation composer with inline keyboards and a `telegram_sessions` table (one draft
+    per chat; auto-created by the webhook, also in install.sql): step 1 caption/media in any
+    order with skip buttons → step 2 channel picker toggling ZN/BP/BF channels (index-based
+    callback data) → step 3 publish now or schedule (UTC) → step 4 confirmation card →
+    per-service results message. Media is downloaded once and pushed to Zernio presign and/or
+    BP /api/media as needed; Buffer uses a public URL (image only, video rejected).
+  - Real analytics (no more `rand()` fakes), merged recent-posts view, channel browser,
+    help screen, cancel anywhere.
+  - SDK additions: getMe, answerCallbackQuery, editMessageText, sendChatAction; reply_markup
+    on all send methods; fixed PHP <8.1 fatal from string-keyed array spread in sendMessage;
+    HTML parse mode throughout.
+  - Dashboard page rebuilt: connection hero (getMe identity + webhook status/pending/last
+    error), token save now verifies via getMe, pairing-code manager with paired-chat revoke,
+    wizard explainer + command reference.
+
 ---
 
 ## 11. Known issues / limitations (accepted "fix later" items)
