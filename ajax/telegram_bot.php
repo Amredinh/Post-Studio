@@ -515,6 +515,7 @@ function tg_publish(Telegram $tg, string $chatId, array &$data): string {
 /* --------------------------- data views ---------------------------------- */
 
 function view_analytics(): string {
+    require_once __DIR__ . '/../includes/metrics.php';
     $published = 0; $failed = 0; $scheduled = 0; $reach = 0; $reachKnown = false;
     try {
         if ($zn = zernio_client()) {
@@ -523,8 +524,8 @@ function view_analytics(): string {
                 if ($st === 'published') $published++;
                 elseif ($st === 'failed') $failed++;
                 elseif ($st === 'scheduled' || $st === 'publishing') $scheduled++;
-                $v = $p['metrics']['views'] ?? $p['metrics']['reach'] ?? null;
-                if ($v !== null) { $reach += (int)$v; $reachKnown = true; }
+                $pm = ps_extract_metrics($p);
+                if ($pm['found']) { $reach += $pm['views']; $reachKnown = true; }
             }
         }
     } catch (Throwable $e) { /* service offline */ }
@@ -535,8 +536,8 @@ function view_analytics(): string {
                 if ($st === 'published') $published++;
                 elseif ($st === 'failed') $failed++;
                 elseif ($st === 'scheduled' || $st === 'processing') $scheduled++;
-                $v = $p['metrics']['views'] ?? $p['metrics']['reach'] ?? null;
-                if ($v !== null) { $reach += (int)$v; $reachKnown = true; }
+                $pm = ps_extract_metrics($p);
+                if ($pm['found']) { $reach += $pm['views']; $reachKnown = true; }
             }
         }
     } catch (Throwable $e) { /* service offline */ }

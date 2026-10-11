@@ -62,3 +62,18 @@ CREATE TABLE IF NOT EXISTS telegram_sessions (
   data MEDIUMTEXT,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Daily per-post engagement snapshots (powers the trend charts on the Analytics page).
+-- Created automatically on first use as well, so importing this is optional.
+CREATE TABLE IF NOT EXISTS analytics_snapshots (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  snap_date DATE NOT NULL,
+  service VARCHAR(20) NOT NULL,
+  post_id VARCHAR(64) NOT NULL,
+  views BIGINT NOT NULL DEFAULT 0,
+  likes BIGINT NOT NULL DEFAULT 0,
+  comments BIGINT NOT NULL DEFAULT 0,
+  shares BIGINT NOT NULL DEFAULT 0,
+  UNIQUE KEY uk_snap (snap_date, service, post_id),
+  INDEX idx_snap_date (snap_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

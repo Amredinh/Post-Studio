@@ -125,6 +125,13 @@ class Zernio {
         return $this->request('POST', '/posts/' . rawurlencode($postId) . '/unpublish');
     }
 
+    // ---- Analytics ----
+
+    /** GET /v1/analytics — per-post engagement metrics (views, likes, comments, shares ...). */
+    public function getAnalytics(array $filters = []): array {
+        return $this->request('GET', '/analytics', null, $filters);
+    }
+
     // ---- Media ----
 
     /** POST /v1/media/presign — get a presigned upload URL for a file. */

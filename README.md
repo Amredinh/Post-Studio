@@ -13,10 +13,10 @@ The composer lists all connected channels from **all services**, you tick which 
 - Media: browser uploads via Zernio presigned URLs or a server-side proxy to BulkPublish `/api/media`; media-URL input also supported
 - Merged post list and detail view across all three services (retry / unpublish / publish-now / remove-from-queue)
 - Bulk CSV scheduling with a downloadable template — rows are routed per service via a `service` column (`zernio` | `bulkpublish` | `buffer`)
-- Analytics dashboard: reach/likes/comments across all services, cached locally (30-min TTL, 60-s refresh throttle) to protect free-tier API quotas; tracked post views on detail pages
+- Analytics dashboard: views, likes, comments, shares and engagement rate across all services, with trend/platform/activity charts, per-day history snapshots, a sortable post table and a **Tracking check** tool that shows what each service actually returns. Cached locally (30-min TTL, 60-s refresh throttle) to protect free-tier API quotas
 - **Tools & Platforms reference page**: capability matrix (which service supports which platform) plus per-platform free-plan limits, formats, composer options and tips
 - **Telegram bot integration** — post from Telegram, check status/analytics, get help
-- Dark, modern dashboard UI (Tailwind CSS via CDN — no build step)
+- Responsive dashboard UI (desktop sidebar, mobile drawer + bottom tabs) with **dark and light themes** (follows the OS, switchable, remembered per browser); dependency-free SVG charts; Tailwind CSS via CDN — no build step
 
 ## Tech stack
 

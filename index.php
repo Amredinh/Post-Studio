@@ -112,32 +112,65 @@ $platformCount = count($byPlatform);
 <?php endif; ?>
 
 <?php if ($hasKey): ?>
-  <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
-    <div class="card card-pad stat-tile">
-      <div class="text-3xl font-bold"><?= count($accounts) ?></div>
-      <div class="text-xs text-slate-500 mt-1">Connected channels</div>
+  <!-- Engagement overview (filled by JS from ajax/refresh_analytics.php) -->
+  <section class="space-y-4">
+    <div class="flex items-center justify-between gap-3">
+      <div>
+        <h2 class="text-base font-semibold text-ink">Engagement overview</h2>
+        <p class="text-xs text-muted mt-0.5" id="dash-fresh">Loading latest numbers…</p>
+      </div>
+      <a href="analytics.php" class="btn btn-ghost btn-sm">Full analytics →</a>
     </div>
-    <div class="card card-pad stat-tile">
-      <div class="text-3xl font-bold"><?= $platformCount ?></div>
-      <div class="text-xs text-slate-500 mt-1">Platforms</div>
+
+    <div id="dash-kpis" class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <?php for ($i = 0; $i < 4; $i++): ?><div class="card skeleton" style="height:108px"></div><?php endfor; ?>
     </div>
-    <div class="card card-pad stat-tile">
-      <div class="text-3xl font-bold <?= $zernioFailed ? 'text-slate-600' : '' ?>"><?= $zernioCount ?></div>
-      <div class="text-xs text-slate-500 mt-1">Zernio accounts<?= $zernioFailed ? ' (unavailable)' : '' ?></div>
+
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+      <div class="card xl:col-span-2">
+        <div class="card-head">
+          <div class="card-title">Last 14 days</div>
+          <div class="seg" id="dash-metric" role="group" aria-label="Metric">
+            <button type="button" data-metric="views" class="on">Views</button>
+            <button type="button" data-metric="likes">Likes</button>
+            <button type="button" data-metric="comments">Comments</button>
+            <button type="button" data-metric="shares">Shares</button>
+          </div>
+        </div>
+        <div class="p-4 sm:p-5"><div id="dash-chart" class="chart"><div class="chart-empty">Loading…</div></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="card-title">Channels</div><span class="pill pill-ok"><span class="dot"></span><?= count($accounts) ?> connected</span></div>
+        <div class="p-4 sm:p-5 space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div><div class="kpi-value" style="margin-top:0"><?= count($accounts) ?></div><div class="text-xs text-muted">Channels</div></div>
+            <div><div class="kpi-value" style="margin-top:0"><?= $platformCount ?></div><div class="text-xs text-muted">Platforms</div></div>
+          </div>
+          <?php
+            $svcRows = [
+              ['Zernio', 'ZN', $zernio, $zernioCount, $zernioFailed],
+              ['BulkPublish', 'BP', $bp, $bpCount, $bpFailed],
+              ['Buffer', 'BF', $buf, $bufferCount, $bufferFailed],
+            ];
+            foreach ($svcRows as $sr): if (!$sr[2]) continue; ?>
+            <div class="flex items-center justify-between rounded-xl px-3 py-2" style="background:var(--surface-2)">
+              <div class="flex items-center gap-2 text-sm font-medium text-ink"><span class="pill pill-accent" style="padding:.1rem .45rem;font-size:.62rem"><?= $sr[1] ?></span><?= $sr[0] ?></div>
+              <?php if ($sr[4]): ?>
+                <span class="pill pill-bad">unavailable</span>
+              <?php else: ?>
+                <span class="text-sm font-semibold text-ink tabular"><?= (int)$sr[3] ?></span>
+              <?php endif; ?>
+            </div>
+          <?php endforeach; ?>
+          <a href="composer.php" class="btn btn-primary w-full">+ Compose post</a>
+        </div>
+      </div>
     </div>
-    <div class="card card-pad stat-tile">
-      <div class="text-3xl font-bold <?= $bpFailed ? 'text-slate-600' : '' ?>"><?= $bpCount ?></div>
-      <div class="text-xs text-slate-500 mt-1">BulkPublish channels<?= $bpFailed ? ' (unavailable)' : '' ?></div>
-    </div>
-    <div class="card card-pad stat-tile">
-      <div class="text-3xl font-bold <?= $bufferFailed ? 'text-slate-600' : '' ?>"><?= $bufferCount ?></div>
-      <div class="text-xs text-slate-500 mt-1">Buffer channels<?= $bufferFailed ? ' (unavailable)' : '' ?></div>
-    </div>
-  </div>
+  </section>
 
   <div class="flex items-center justify-between">
-    <h2 class="text-base font-semibold">Connected channels</h2>
-    <a href="composer.php" class="btn btn-primary btn-sm">+ Compose post</a>
+    <h2 class="text-base font-semibold text-ink">Connected channels</h2>
   </div>
 
   <?php if (!$accounts): ?>
@@ -219,6 +252,53 @@ $platformCount = count($byPlatform);
           });
         }
       });
+    });
+
+    /* ---- engagement overview ---- */
+    var kpiEl = document.getElementById('dash-kpis');
+    if (!kpiEl || !window.PS) return;
+    var DATA = null, metric = 'views';
+    var KPI = [
+      { key: 'views', label: 'Views', color: 'var(--c2)' },
+      { key: 'likes', label: 'Likes', color: 'var(--c5)' },
+      { key: 'comments', label: 'Comments', color: 'var(--c4)' },
+      { key: 'shares', label: 'Shares', color: 'var(--c3)' }
+    ];
+    function days() { return (DATA.timeline || []).slice(-14); }
+    function drawChart() {
+      var tl = days();
+      PSCharts.line('#dash-chart', {
+        labels: tl.map(function (r) { return r.date; }),
+        series: [{ name: PS.metricMeta[metric].label, color: PS.metricMeta[metric].color, data: tl.map(function (r) { return r[metric]; }) }],
+        height: 220, empty: 'No ' + metric + ' recorded for recent posts yet.'
+      });
+    }
+    function draw() {
+      var s = DATA.stats, tl = days(), tracked = s.tracked_posts || 0;
+      kpiEl.innerHTML = KPI.map(function (k) {
+        return '<div class="card kpi"><div class="kpi-label"><i style="background:' + k.color + '"></i>' + k.label + '</div>' +
+          '<div class="kpi-value">' + PS.compact(s[k.key]) + '</div>' +
+          '<div class="kpi-foot">' + (tracked ? PS.compact(Math.round(s[k.key] / tracked)) + ' avg / post' : 'No data yet') + '</div>' +
+          '<div class="kpi-spark" data-spark="' + k.key + '"></div></div>';
+      }).join('');
+      KPI.forEach(function (k) {
+        PSCharts.spark(kpiEl.querySelector('[data-spark="' + k.key + '"]'), { data: tl.map(function (r) { return r[k.key]; }), color: k.color });
+      });
+      drawChart();
+      document.getElementById('dash-fresh').textContent = DATA.cached_at
+        ? s.total + ' posts tracked · updated ' + PS.timeAgo(DATA.cached_at)
+        : s.total + ' posts tracked';
+    }
+    document.getElementById('dash-metric').addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b || !DATA) return;
+      metric = b.dataset.metric;
+      this.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); });
+      drawChart();
+    });
+    PS.fetchAnalytics(false).then(function (d) { DATA = d; draw(); }).catch(function (e) {
+      kpiEl.innerHTML = '<div class="card card-pad col-span-full text-sm text-muted">Engagement numbers are unavailable right now: ' + PS.esc(e.message) + '</div>';
+      document.getElementById('dash-fresh').textContent = '';
+      document.getElementById('dash-chart').innerHTML = '<div class="chart-empty">—</div>';
     });
   });
 </script>
