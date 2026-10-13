@@ -21,8 +21,8 @@ define('ZERNIO_BASE_URL', 'https://zernio.com/api/v1');
 // ---- BulkPublish API ----
 define('BULKPUBLISH_BASE_URL', 'https://app.bulkpublish.com');
 
-// ---- Buffer API (classic v1) ----
-define('BUFFER_BASE_URL', 'https://api.bufferapp.com/1');
+// ---- Buffer API (GraphQL) ----
+define('BUFFER_BASE_URL', 'https://api.buffer.com');
 
 // ---- App settings ----
 define('APP_NAME', 'Post Studio');

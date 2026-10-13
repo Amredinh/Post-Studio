@@ -62,17 +62,17 @@ try {
         }
         $rawId = preg_replace('/^bf/', '', $postId);
         if ($action === 'retry') {
-            // Re-share the update immediately.
+            // Re-share the post immediately (new API: creates a new post for same channel).
             $result = $buf->sharePost($rawId);
+            echo json_encode(['ok' => true, 'post' => $result]);
         } elseif ($action === 'unpublish') {
-            // Removes the update from Buffer (queued or history).
-            $result = $buf->destroyPost($rawId);
+            // Delete/remove the post from Buffer.
+            $result = $buf->deletePost($rawId);
+            echo json_encode(['ok' => true, 'post' => ['id' => $result['id'] ?? $rawId]]);
         } else {
             http_response_code(400);
             echo json_encode(['ok' => false, 'error' => 'Unknown action']);
-            exit;
         }
-        echo json_encode(['ok' => true, 'post' => $result['updates'] ?? ($result['update'] ?? [])]);
         exit;
     }
 

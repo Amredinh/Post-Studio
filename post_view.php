@@ -35,9 +35,9 @@ if ($postId !== '') {
                 $error = 'No Buffer access token configured.';
             } else {
                 $rawId = preg_replace('/^bf/', '', $postId);
-                $update = $buf->getUpdate($rawId);
-                $profile = !empty($update['profile_id']) ? $buf->getProfile((string)$update['profile_id']) : [];
-                $view = normalize_buffer_view($update, $profile);
+                // New GraphQL API: single getPost() call (no separate profile lookup).
+                $post = $buf->getPost($rawId);
+                $view = normalize_buffer_view($post);
             }
         } else {
             $zernio = zernio_client();
@@ -83,33 +83,28 @@ function normalize_zernio_view(array $post): array {
     ];
 }
 
-function normalize_buffer_view(array $update, array $profile = []): array {
-    $platform = buffer_map_platform((string)($update['profile_service'] ?? ($profile['service'] ?? '')));
-    $media = [];
-    if (!empty($update['media']['photo'])) {
-        $media[] = ['url' => (string)$update['media']['photo'], 'type' => 'image'];
-    }
-    $status = buffer_map_status((string)($update['status'] ?? ''));
+function normalize_buffer_view(array $post): array {
+    // New GraphQL API fields: text, dueAt (ISO string), status, channelId.
+    $status = buffer_map_status((string)($post['status'] ?? ''));
+    $dueAt  = $post['dueAt'] ?? null;
+    $scheduled = $dueAt ? date('Y-m-d H:i:s', strtotime($dueAt)) : null;
     return [
-        'service' => 'buffer',
-        '_id' => 'bf' . ($update['id'] ?? ''),
-        'title' => 'Buffer update',
-        'content' => $update['text'] ?? '',
-        'status' => $status,
-        // due_at / scheduled_at are unix timestamps in the Buffer API.
-        'scheduledFor' => !empty($update['due_at'])
-            ? date('Y-m-d H:i:s', (int)$update['due_at'])
-            : (!empty($update['scheduled_at']) ? date('Y-m-d H:i:s', (int)$update['scheduled_at']) : null),
-        'timezone' => $profile['timezone'] ?? null,
-        'mediaItems' => $media,
-        'tags' => [],
-        'platforms' => [[
-            'platform' => $platform,
-            'status' => $status,
-            'name' => $profile['formatted_username'] ?? '',
-            'username' => $profile['service_username'] ?? '',
-            'url' => '',
-            'error' => '',
+        'service'      => 'buffer',
+        '_id'          => 'bf' . ($post['id'] ?? ''),
+        'title'        => 'Buffer post',
+        'content'      => $post['text'] ?? '',
+        'status'       => $status,
+        'scheduledFor' => $scheduled,
+        'timezone'     => null,
+        'mediaItems'   => [],  // new API list endpoint does not include media URLs
+        'tags'         => [],
+        'platforms'    => [[
+            'platform' => 'unknown',  // channelId available but platform requires separate lookup
+            'status'   => $status,
+            'name'     => '',
+            'username' => '',
+            'url'      => '',
+            'error'    => '',
         ]],
     ];
 }

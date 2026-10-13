@@ -67,23 +67,23 @@ try {
 
 try {
     if ($buf) {
-        $profiles = $buf->listProfiles()['profiles'] ?? [];
-        foreach ($profiles as $p) {
-            $platform = buffer_map_platform((string)($p['service'] ?? ''));
+        // listChannels() returns GraphQL channel objects: { id, name, service, avatar, timezone }
+        $channels = $buf->listChannels()['channels'] ?? [];
+        foreach ($channels as $c) {
+            $platform = buffer_map_platform((string)($c['service'] ?? ''));
             $meta = platform_meta($platform);
             $accounts[] = [
-                'service' => 'buffer',
-                '_id' => 'bf' . ($p['id'] ?? ''),
-                'profileId' => $p['id'] ?? '',
-                'platform' => $platform,
-                'displayName' => $p['formatted_username'] ?: ($p['display_name'] ?? ($p['service_username'] ?? '')),
-                'username' => $p['formatted_username'] ?? ($p['service_username'] ?? ''),
-                'avatarUrl' => $p['avatar_https'] ?? ($p['avatar'] ?? null),
-                'accountId' => $p['service_id'] ?? null,
-                'followers' => $p['statistics']['followers'] ?? null,
-                'timezone' => $p['timezone'] ?? null,
-                'color' => $meta['color'],
-                'short' => $meta['short'],
+                'service'     => 'buffer',
+                '_id'         => 'bf' . ($c['id'] ?? ''),
+                'profileId'   => $c['id'] ?? '',
+                'platform'    => $platform,
+                'displayName' => $c['name'] ?? '',
+                'username'    => $c['name'] ?? '',
+                'avatarUrl'   => $c['avatar'] ?? null,
+                'accountId'   => $c['id'] ?? null,
+                'timezone'    => $c['timezone'] ?? null,
+                'color'       => $meta['color'],
+                'short'       => $meta['short'],
             ];
         }
     }

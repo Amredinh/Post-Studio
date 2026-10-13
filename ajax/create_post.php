@@ -244,18 +244,13 @@ function bp_to_bp_slug(string $platform): string {
 }
 
 /**
- * Create one Buffer update for all selected Buffer profiles.
- * The classic Buffer API has no per-platform options or per-platform captions:
- * one text + optional single image URL goes to every selected profile.
+ * Create Buffer posts for all selected Buffer channels using the GraphQL API.
+ * The new API requires one createPost call per channel (no batch endpoint).
+ * Supports images and videos via media URL. No per-channel options/captions.
  */
 function create_buffer_update(array $payload, array $bufferEntries, Buffer $buf): array {
-    $profileIds = [];
-    foreach ($bufferEntries as $e) {
-        if (!empty($e['profileId'])) $profileIds[] = (string)$e['profileId'];
-    }
-    $profileIds = array_values(array_unique(array_filter($profileIds)));
-    if (!$profileIds) {
-        throw new RuntimeException('No valid Buffer profile IDs in selection.');
+    if (!$bufferEntries) {
+        throw new RuntimeException('No Buffer channels in selection.');
     }
 
     $text = trim((string)($payload['content'] ?? ''));
@@ -263,53 +258,69 @@ function create_buffer_update(array $payload, array $bufferEntries, Buffer $buf)
         throw new RuntimeException('Buffer requires a caption (text) for posts.');
     }
 
-    // Classic API supports a single image URL only; video is not supported.
-    $photoUrl = null;
+    // Collect media URLs (new API supports images and videos).
+    $mediaUrls = [];
     foreach (($payload['mediaItems'] ?? []) as $m) {
-        if (($m['type'] ?? '') === 'image' && !empty($m['url'])) {
-            $photoUrl = (string)$m['url'];
-            break;
-        }
-        if (($m['type'] ?? '') === 'video') {
-            throw new RuntimeException('Buffer classic API does not support video posts — remove the video or deselect the Buffer channels.');
+        if (!empty($m['url'])) {
+            $mediaUrls[] = (string)$m['url'];
         }
     }
 
-    $opts = [];
+    // Build scheduling opts.
+    $opts = ['mediaUrls' => $mediaUrls];
     if (!empty($payload['publishNow'])) {
-        $opts['now'] = true;
+        $opts['publishNow'] = true;
     } elseif (!empty($payload['scheduledFor'])) {
         $tz = (string)($payload['timezone'] ?? 'UTC');
         $dt = new DateTime($payload['scheduledFor'], new DateTimeZone($tz));
         $dt->setTimezone(new DateTimeZone('UTC'));
         $opts['scheduledAt'] = $dt->format('Y-m-d\TH:i:s\Z');
     } else {
-        $opts['now'] = true;
-    }
-    if ($photoUrl !== null) $opts['photoUrl'] = $photoUrl;
-
-    $resp = $buf->createUpdate($profileIds, $text, $opts);
-    $updates = $resp['updates'] ?? [];
-    if (!$updates) {
-        throw new RuntimeException('Buffer did not return any updates.');
+        $opts['publishNow'] = true;
     }
 
-    $rawStatus = (string)($updates[0]['status'] ?? '');
+    // Create a post for each selected channel.
+    $createdPosts = [];
+    $failedChannels = [];
+    foreach ($bufferEntries as $e) {
+        $channelId = (string)($e['profileId'] ?? '');
+        // Strip bf prefix if present (list_accounts stores it with bf prefix in _id
+        // but profileId should be raw; guard against both).
+        $channelId = preg_replace('/^bf/', '', $channelId);
+        if ($channelId === '') continue;
+
+        try {
+            $post = $buf->createPost($channelId, $text, $opts);
+            if ($post) $createdPosts[] = $post;
+        } catch (Throwable $ex) {
+            $failedChannels[] = $channelId . ': ' . $ex->getMessage();
+        }
+    }
+
+    if (!$createdPosts && $failedChannels) {
+        throw new RuntimeException('Buffer: all channels failed — ' . implode('; ', $failedChannels));
+    }
+
+    $count = count($createdPosts);
+    $firstPost = $createdPosts[0] ?? [];
+
+    $rawStatus = (string)($firstPost['status'] ?? '');
     $status = buffer_map_status($rawStatus);
-    if (!empty($opts['now']) && $status === 'scheduled') $status = 'publishing';
 
     $post = [
-        '_id' => (string)($updates[0]['id'] ?? ''),
+        '_id'     => 'bf' . ($firstPost['id'] ?? ''),
         'service' => 'buffer',
         'content' => $text,
-        'status' => $status,
-        'profiles' => count($updates),
+        'status'  => $status,
+        'profiles'=> $count,
     ];
 
-    return [
-        'post' => $post,
-        'message' => 'Buffer update queued to ' . count($updates) . ' channel' . (count($updates) > 1 ? 's' : ''),
-    ];
+    $msg = 'Buffer post queued to ' . $count . ' channel' . ($count !== 1 ? 's' : '');
+    if ($failedChannels) {
+        $msg .= ' (' . count($failedChannels) . ' failed)';
+    }
+
+    return ['post' => $post, 'message' => $msg];
 }
 
 /** Mirror a created post into the local posts table (non-fatal). */

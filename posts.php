@@ -73,24 +73,23 @@ if ($hasKey) {
     if ($hasBuffer) {
         try {
             $buf = new Buffer((string)get_setting('buffer_api_key', ''));
-            foreach (($buf->listProfiles()['profiles'] ?? []) as $prof) {
-                $platform = buffer_map_platform((string)($prof['service'] ?? ''));
-                $pname = $prof['formatted_username'] ?? ($prof['service_username'] ?? '');
+            // New API: list channels first, then list posts per channel.
+            $channels = $buf->listChannels()['channels'] ?? [];
+            foreach ($channels as $chan) {
+                $platform = buffer_map_platform((string)($chan['service'] ?? ''));
+                $cname    = $chan['name'] ?? '';
+                $chanId   = (string)($chan['id'] ?? '');
                 if ($filters['platform'] !== '' && $platform !== $filters['platform']) continue;
-                // Buffer lists updates per profile: pull pending + sent queues.
-                foreach (['pending', 'sent'] as $queue) {
-                    try {
-                        $updates = $queue === 'pending'
-                            ? $buf->listPending((string)$prof['id'], 50)['updates']
-                            : $buf->listSent((string)$prof['id'], 50)['updates'];
-                        foreach ($updates as $u) {
-                            $item = normalize_buffer_post($u, $platform, $pname);
-                            if ($filters['search'] !== '' && stripos((string)$item['content'], $filters['search']) === false) continue;
-                            $items[] = $item;
-                        }
-                    } catch (Throwable $e) {
-                        // Skip a queue that fails; keep the rest.
+                try {
+                    // Fetch recent posts for this channel (sent + scheduled).
+                    $bPosts = $buf->listPosts($chanId, [], 50)['posts'] ?? [];
+                    foreach ($bPosts as $u) {
+                        $item = normalize_buffer_post($u, $platform, $cname);
+                        if ($filters['search'] !== '' && stripos((string)$item['content'], $filters['search']) === false) continue;
+                        $items[] = $item;
                     }
+                } catch (Throwable $e) {
+                    // Skip a channel that fails; keep the rest.
                 }
             }
         } catch (Throwable $e) {
@@ -135,30 +134,28 @@ function normalize_zernio_post(array $p): array {
     ];
 }
 
-function normalize_buffer_post(array $u, string $platform, string $profileName): array {
-    $status = buffer_map_status((string)($u['status'] ?? ''));
-    $scheduled = !empty($u['due_at'])
-        ? date('Y-m-d H:i:s', (int)$u['due_at'])
-        : (!empty($u['scheduled_at']) ? date('Y-m-d H:i:s', (int)$u['scheduled_at']) : null);
+function normalize_buffer_post(array $u, string $platform, string $channelName): array {
+    $status    = buffer_map_status((string)($u['status'] ?? ''));
+    // New GraphQL API returns ISO dueAt string instead of unix timestamp.
+    $dueAt     = $u['dueAt'] ?? null;
+    $scheduled = $dueAt ? date('Y-m-d H:i:s', strtotime($dueAt)) : null;
     $media = [];
-    if (!empty($u['media']['photo'])) {
-        $media[] = ['url' => (string)$u['media']['photo'], 'type' => 'image'];
-    }
+    // New API does not embed media in the post list; placeholder for future use.
     return [
-        '_id' => 'bf' . ($u['id'] ?? ''),
-        'service' => 'buffer',
-        'content' => $u['text'] ?? '',
-        'status' => $status,
+        '_id'          => 'bf' . ($u['id'] ?? ''),
+        'service'      => 'buffer',
+        'content'      => $u['text'] ?? '',
+        'status'       => $status,
         'scheduledFor' => $scheduled,
-        'mediaItems' => $media,
-        'platforms' => [[
+        'mediaItems'   => $media,
+        'platforms'    => [[
             'platform' => $platform,
-            'status' => $status,
-            'url' => '',
-            'error' => '',
-            'name' => $profileName,
+            'status'   => $status,
+            'url'      => '',
+            'error'    => '',
+            'name'     => $channelName,
         ]],
-        '_sort' => $scheduled ?: (!empty($u['sent_at']) ? date('Y-m-d H:i:s', (int)$u['sent_at']) : ''),
+        '_sort'        => $scheduled ?? '',
     ];
 }
 
